@@ -42,6 +42,33 @@ function getShortAddress(address?: string): string {
   return parts.slice(1, 3).join(' ');
 }
 
+/** 주유소 상호명 앞에 중복으로 붙은 정유사 브랜드명을 제거해 주유소 고유 이름이 한눈에 보이도록 정리 */
+function getCleanStationName(name: string): string {
+  if (!name) return '주유소';
+  const cleaned = name
+    .replace(
+      /^(HD현대오일뱅크|현대오일뱅크|GS칼텍스|SK에너지|SK|GS|S-OIL|에쓰오일|알뜰주유소|알뜰)\s+/i,
+      ''
+    )
+    .trim();
+  return cleaned || name;
+}
+
+/** 1순위: 최저가순, 2순위(동일 가격일 때): 기준 좌표에서 거리가 가까운 순 정렬 */
+function sortStationsByPriceAndDistance(
+  list: KeroseneStation[],
+  baseLat: number,
+  baseLng: number
+): KeroseneStation[] {
+  return [...list].sort((a, b) => {
+    const priceDiff = a.kerosene_price - b.kerosene_price;
+    if (priceDiff !== 0) return priceDiff;
+    const distA = getDistanceKm(baseLat, baseLng, a.latitude, a.longitude);
+    const distB = getDistanceKm(baseLat, baseLng, b.latitude, b.longitude);
+    return distA - distB;
+  });
+}
+
 export default function MapPage({
   initialStations,
   hasSchedule,
@@ -133,7 +160,7 @@ export default function MapPage({
     async function syncDestinationStations() {
       if (!hasDestination) {
         setStations(initialStations);
-        const sorted = [...initialStations].sort((a, b) => a.kerosene_price - b.kerosene_price);
+        const sorted = sortStationsByPriceAndDistance(initialStations, activeLat, activeLng);
         setSelectedStation(sorted[0] ?? null);
         return;
       }
@@ -143,7 +170,7 @@ export default function MapPage({
       if (cancelled) return;
       setStations(res.stations);
       setDataSource(res.source);
-      const sorted = [...res.stations].sort((a, b) => a.kerosene_price - b.kerosene_price);
+      const sorted = sortStationsByPriceAndDistance(res.stations, activeLat, activeLng);
       setSelectedStation(sorted[0] ?? null);
       setIsLoading(false);
 
@@ -160,7 +187,7 @@ export default function MapPage({
     };
   }, [hasDestination, destinationName, activeLat, activeLng, initialStations, kakaoReady]);
 
-  // 필터링 및 정렬된 주유소 목록
+  // 필터링 및 정렬된 주유소 목록 (동일 가격 시 거리순)
   const filteredStations = useMemo(() => {
     let list = [...stations];
     if (filterMode === 'HOURS_24') {
@@ -168,9 +195,21 @@ export default function MapPage({
     } else if (filterMode === 'THIN_NOZZLE') {
       list = list.filter((s) => s.has_thin_nozzle);
     }
-    list.sort((a, b) => a.kerosene_price - b.kerosene_price);
-    return list;
-  }, [stations, filterMode]);
+    const refLat =
+      searchMode === 'ROUTE' && hasDestination ? activeLat : currentMapCenter.lat;
+    const refLng =
+      searchMode === 'ROUTE' && hasDestination ? activeLng : currentMapCenter.lng;
+    return sortStationsByPriceAndDistance(list, refLat, refLng);
+  }, [
+    stations,
+    filterMode,
+    searchMode,
+    hasDestination,
+    activeLat,
+    activeLng,
+    currentMapCenter.lat,
+    currentMapCenter.lng,
+  ]);
 
   const lowestPrice = useMemo(() => {
     if (filteredStations.length === 0) return 0;
@@ -381,7 +420,7 @@ export default function MapPage({
     setDataSource(result.source);
 
     if (result.stations.length > 0) {
-      const sorted = [...result.stations].sort((a, b) => a.kerosene_price - b.kerosene_price);
+      const sorted = sortStationsByPriceAndDistance(result.stations, lat, lng);
       setSelectedStation(sorted[0]);
 
       // 현재 화면(Bounds) 안에 검색된 주유소가 하나도 안 보일 정도로 확대되어 있다면
@@ -694,16 +733,12 @@ export default function MapPage({
             className="px-4 pt-2 pb-2.5 cursor-pointer select-none hover:bg-gray-50/70 transition-colors rounded-t-2xl"
           >
             <div className="w-9 h-1 bg-gray-300 rounded-full mx-auto mb-2" />
+            {/* 1라인: 주유소명 전체 노출 & 우측 가격/접기 버튼 */}
             <div className="flex items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 min-w-0">
-                <span className="text-[10px] font-bold bg-[#2563EB] text-white px-2 py-0.5 rounded shrink-0">
-                  📍 선택됨
-                </span>
-                <span className="text-[10px] font-bold bg-forest/10 text-forest px-2 py-0.5 rounded shrink-0">
-                  {BRAND_LABELS[selectedStation.brand_code]}
-                </span>
-                <h3 className="text-sm font-extrabold text-gray-900 truncate">
-                  {selectedStation.station_name}
+                <span className="text-sm shrink-0">📍</span>
+                <h3 className="text-base font-extrabold text-gray-900 truncate">
+                  {getCleanStationName(selectedStation.station_name)}
                 </h3>
               </div>
 
@@ -716,32 +751,36 @@ export default function MapPage({
                 </span>
               </div>
             </div>
+
+            {/* 2라인(주유소명 바로 밑): 정유사 브랜드명 및 특성 배지 */}
+            <div className="flex items-center justify-between flex-wrap gap-1 mt-1.5">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <span className="text-[10px] font-bold bg-forest/10 text-forest px-2 py-0.5 rounded">
+                  {BRAND_LABELS[selectedStation.brand_code]}
+                </span>
+                {selectedStation.kerosene_price === lowestPrice && (
+                  <span className="text-[10px] font-bold bg-aid-red text-white px-2 py-0.5 rounded">
+                    구역 최저가
+                  </span>
+                )}
+                {selectedStation.is_24_hours && (
+                  <span className="text-[10px] font-bold bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
+                    24시 영업
+                  </span>
+                )}
+                {selectedStation.has_thin_nozzle && (
+                  <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">
+                    얇은 주유건 보유
+                  </span>
+                )}
+              </div>
+              <span className="text-[10px] text-gray-400">실내등유 1L 기준</span>
+            </div>
           </div>
 
-          {/* 펼쳐진 상태일 때만 상세 정보 · 주유소 칩 · 내비게이션 버튼 노출 */}
+          {/* 펼쳐진 상태일 때만 상세 주소 · 좌표 · 주유소 칩 · 내비게이션 버튼 노출 */}
           {isCardExpanded && (
-            <div className="px-4 pb-3.5 pt-1 space-y-2.5 border-t border-gray-100">
-              <div className="flex items-center justify-between flex-wrap gap-1">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  {selectedStation.kerosene_price === lowestPrice && (
-                    <span className="text-[10px] font-bold bg-aid-red text-white px-2 py-0.5 rounded">
-                      구역 최저가
-                    </span>
-                  )}
-                  {selectedStation.is_24_hours && (
-                    <span className="text-[10px] font-bold bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
-                      24시 영업
-                    </span>
-                  )}
-                  {selectedStation.has_thin_nozzle && (
-                    <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">
-                      얇은 주유건 보유
-                    </span>
-                  )}
-                </div>
-                <span className="text-[10px] text-gray-400">실내등유 1L 기준</span>
-              </div>
-
+            <div className="px-4 pb-3.5 pt-2 space-y-2.5 border-t border-gray-100">
               <div>
                 <p className="text-xs text-gray-600">
                   {selectedStation.address}
@@ -786,7 +825,7 @@ export default function MapPage({
                         : 'bg-gray-50 text-gray-600 border-gray-200'
                     }`}
                   >
-                    {st.station_name} ({st.kerosene_price.toLocaleString()}원)
+                    {getCleanStationName(st.station_name)} ({st.kerosene_price.toLocaleString()}원)
                   </button>
                 ))}
               </div>

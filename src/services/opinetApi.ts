@@ -265,42 +265,24 @@ export function searchRealGasStationsByKakao(
       return onlyGasStations.slice(0, 20).map((p) => {
         const catAndName = `${p.category_name || ''} ${p.place_name || ''}`;
         let brand: BrandCode = 'ETC';
-        let brandPrefix = '';
 
         if (catAndName.includes('SK')) {
           brand = 'SKE';
-          brandPrefix = 'SK에너지';
         } else if (catAndName.includes('GS')) {
           brand = 'GSC';
-          brandPrefix = 'GS칼텍스';
         } else if (catAndName.includes('현대') || catAndName.includes('오일뱅크')) {
           brand = 'HDO';
-          brandPrefix = 'HD현대오일뱅크';
         } else if (catAndName.includes('S-OIL') || catAndName.includes('에쓰오일')) {
           brand = 'SOL';
-          brandPrefix = 'S-OIL';
         } else if (
           catAndName.includes('알뜰') ||
           catAndName.includes('농협') ||
           catAndName.includes('NH')
         ) {
           brand = 'RTO';
-          brandPrefix = '알뜰';
         }
 
         const rawName = String(p.place_name || '주유소').trim();
-        const displayName =
-          brandPrefix &&
-          !rawName.includes(brandPrefix) &&
-          !rawName.toUpperCase().includes('SK') &&
-          !rawName.toUpperCase().includes('GS') &&
-          !rawName.includes('현대') &&
-          !rawName.toUpperCase().includes('S-OIL') &&
-          !rawName.includes('에쓰오일') &&
-          !rawName.includes('농협') &&
-          !rawName.includes('알뜰')
-            ? `${brandPrefix} ${rawName}`
-            : rawName;
 
         const idNum =
           String(p.id || rawName)
@@ -312,7 +294,7 @@ export function searchRealGasStationsByKakao(
 
         return {
           station_id: `KAKAO_${p.id}`,
-          station_name: displayName,
+          station_name: rawName,
           brand_code: brand,
           kerosene_price: price,
           latitude: Number(p.y),
