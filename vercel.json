@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/opinet/:path*",
+      "destination": "https://www.opinet.co.kr/api/:path*"
+    }
+  ]
+}

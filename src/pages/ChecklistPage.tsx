@@ -16,10 +16,21 @@ interface ChecklistPageProps {
   onToggleItem: (itemId: string) => void;
   onAddItem: (name: string, category: GearCategory) => void;
   onAddAiItem: (name: string, category: GearCategory) => void;
+  onDeleteItem: (itemId: string) => void;
+  onResetAllChecks: () => void;
+  onRestoreDefaultItems: () => void;
   onOpenTripSetup: () => void;
 }
 
-const CATEGORIES: GearCategory[] = ['WINTER_AID', 'TENT', 'COOKING', 'SLEEPING', 'LIGHTING', 'ETC'];
+const CATEGORIES: GearCategory[] = [
+  'WINTER_AID',
+  'TENT',
+  'COOKING',
+  'SLEEPING',
+  'LIGHTING',
+  'ETC',
+  'SHOPPING',
+];
 
 export default function ChecklistPage({
   checklist,
@@ -29,6 +40,9 @@ export default function ChecklistPage({
   onToggleItem,
   onAddItem,
   onAddAiItem,
+  onDeleteItem,
+  onResetAllChecks,
+  onRestoreDefaultItems,
   onOpenTripSetup,
 }: ChecklistPageProps) {
   const [openCategories, setOpenCategories] = useState<Record<string, boolean>>({
@@ -38,6 +52,7 @@ export default function ChecklistPage({
     SLEEPING: true,
     LIGHTING: true,
     ETC: true,
+    SHOPPING: true,
   });
   const [showAddModal, setShowAddModal] = useState(false);
   const [showGearImportModal, setShowGearImportModal] = useState(false);
@@ -174,8 +189,27 @@ export default function ChecklistPage({
       {/* 2.2 진척도 게이지 & 계절 연동 AI 추천 칩 */}
       <section className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-3">
         <div className="flex items-center justify-between">
-          <span className="text-sm font-bold text-gray-800">전체 준비 진척도</span>
-          <span className="text-sm font-extrabold text-forest">{progress}%</span>
+          <div className="flex items-center gap-2">
+            <span className="text-sm font-bold text-gray-800">전체 준비 진척도</span>
+            <span className="text-sm font-extrabold text-forest">{progress}%</span>
+          </div>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={onResetAllChecks}
+              disabled={!checklist.items.some((i) => i.is_checked)}
+              className="text-[11px] font-bold px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-surface disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+            >
+              🔄 체크 전체 해제
+            </button>
+            <button
+              type="button"
+              onClick={onRestoreDefaultItems}
+              className="text-[11px] font-bold px-2.5 py-1 rounded-lg border border-forest/25 text-forest hover:bg-forest/10 transition-colors"
+            >
+              📋 기본 목록 복원
+            </button>
+          </div>
         </div>
         <ProgressBar progress={progress} />
 
@@ -221,6 +255,21 @@ export default function ChecklistPage({
 
       {/* 2.3 카테고리별 아코디언 리스트 */}
       <div className="space-y-3">
+        {checklist.items.length === 0 && (
+          <div className="bg-white rounded-2xl p-6 text-center shadow-sm border border-gray-100 space-y-2.5">
+            <p className="text-sm font-bold text-gray-700">등록된 준비물이 없습니다.</p>
+            <p className="text-xs text-gray-400">
+              새 준비물을 추가하거나 기본 캠핑 준비물 목록을 복원해 보세요.
+            </p>
+            <button
+              type="button"
+              onClick={onRestoreDefaultItems}
+              className="bg-forest text-white text-xs font-bold px-4 py-2 rounded-xl shadow-sm hover:bg-forest-600 transition-colors"
+            >
+              📋 기본 준비물 복원하기
+            </button>
+          </div>
+        )}
         {CATEGORIES.map((category) => {
           const catItems = checklist.items.filter((i) => i.category === category);
           if (catItems.length === 0) return null;
@@ -266,14 +315,14 @@ export default function ChecklistPage({
                       onClick={() => onToggleItem(item.item_id)}
                       className="px-4 py-3 flex items-center justify-between cursor-pointer hover:bg-gray-50 transition-colors"
                     >
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 min-w-0 pr-2">
                         <input
                           type="checkbox"
                           checked={item.is_checked}
                           onChange={() => {}}
-                          className="w-4 h-4 accent-forest rounded cursor-pointer"
+                          className="w-4 h-4 accent-forest rounded cursor-pointer shrink-0"
                         />
-                        <div>
+                        <div className="truncate">
                           <span
                             className={`text-sm font-medium ${
                               item.is_checked ? 'line-through text-gray-400' : 'text-gray-900'
@@ -288,11 +337,24 @@ export default function ChecklistPage({
                           )}
                         </div>
                       </div>
-                      {item.is_checked && item.checked_by && (
-                        <span className="text-[11px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
-                          ✓ {item.checked_by}
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2 shrink-0">
+                        {item.is_checked && item.checked_by && (
+                          <span className="text-[11px] text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">
+                            ✓ {item.checked_by}
+                          </span>
+                        )}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteItem(item.item_id);
+                          }}
+                          title="준비물 삭제"
+                          className="w-6 h-6 rounded-full text-gray-300 hover:text-aid-red hover:bg-aid-red/10 flex items-center justify-center text-xs font-bold transition-colors"
+                        >
+                          ✕
+                        </button>
+                      </div>
                     </li>
                   ))}
                 </ul>

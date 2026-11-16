@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { CampingChecklist, ChecklistItem, GearCategory } from '../types';
 import { KEROSENE_KEYWORDS } from '../types';
 import { mockChecklist } from '../data/mockChecklist';
@@ -21,6 +21,17 @@ export function useChecklist(onKeroseneDetected?: () => void) {
     mockChecklist
   );
   const [toastVisible, setToastVisible] = useState(false);
+
+  // 이전 버전(cl_001) 기본 목록이 저장되어 있는 경우 신규 7개 카테고리 기본 목록(cl_002)으로 자동 업그레이드
+  useEffect(() => {
+    if (checklist.checklist_id !== mockChecklist.checklist_id) {
+      setChecklist((prev) => ({
+        ...prev,
+        checklist_id: mockChecklist.checklist_id,
+        items: mockChecklist.items,
+      }));
+    }
+  }, [checklist.checklist_id, setChecklist]);
 
   const hasSchedule = Boolean(
     checklist.has_schedule === true &&
@@ -80,6 +91,38 @@ export function useChecklist(onKeroseneDetected?: () => void) {
     [setChecklist, checklist.items]
   );
 
+  const deleteItem = useCallback(
+    (itemId: string) => {
+      setChecklist((prev) => ({
+        ...prev,
+        items: prev.items.filter((item) => item.item_id !== itemId),
+      }));
+    },
+    [setChecklist]
+  );
+
+  const resetAllChecks = useCallback(() => {
+    setChecklist((prev) => ({
+      ...prev,
+      items: prev.items.map((item) => ({
+        ...item,
+        is_checked: false,
+        checked_by: undefined,
+      })),
+    }));
+  }, [setChecklist]);
+
+  const restoreDefaultItems = useCallback(() => {
+    setChecklist((prev) => ({
+      ...prev,
+      items: mockChecklist.items.map((item) => ({
+        ...item,
+        is_checked: false,
+        checked_by: undefined,
+      })),
+    }));
+  }, [setChecklist]);
+
   const updateSchedule = useCallback(
     (params: UpdateScheduleParams) => {
       setChecklist((prev) => ({
@@ -123,9 +166,12 @@ export function useChecklist(onKeroseneDetected?: () => void) {
     [setChecklist]
   );
 
-  const progress = Math.round(
-    (checklist.items.filter((i) => i.is_checked).length / checklist.items.length) * 100
-  );
+  const progress =
+    checklist.items.length === 0
+      ? 0
+      : Math.round(
+          (checklist.items.filter((i) => i.is_checked).length / checklist.items.length) * 100
+        );
 
   const dismissToast = () => setToastVisible(false);
 
@@ -135,6 +181,9 @@ export function useChecklist(onKeroseneDetected?: () => void) {
     toggleItem,
     addItem,
     addAiRecommendedItem,
+    deleteItem,
+    resetAllChecks,
+    restoreDefaultItems,
     updateSchedule,
     clearSchedule,
     progress,

@@ -25,6 +25,9 @@ export default function App() {
     toggleItem,
     addItem,
     addAiRecommendedItem,
+    deleteItem,
+    resetAllChecks,
+    restoreDefaultItems,
     updateSchedule,
     clearSchedule,
     progress,
@@ -42,6 +45,15 @@ export default function App() {
       created_at: new Date().toISOString(),
     };
     setUserGear((prev) => [item, ...prev]);
+  };
+
+  const handleUpdateGear = (
+    gearId: string,
+    updatedGear: Omit<UserGear, 'gear_id' | 'user_id' | 'created_at'>
+  ) => {
+    setUserGear((prev) =>
+      prev.map((g) => (g.gear_id === gearId ? { ...g, ...updatedGear } : g))
+    );
   };
 
   const handleDeleteGear = (gearId: string) => {
@@ -75,6 +87,9 @@ export default function App() {
             onToggleItem={toggleItem}
             onAddItem={addItem}
             onAddAiItem={addAiRecommendedItem}
+            onDeleteItem={deleteItem}
+            onResetAllChecks={resetAllChecks}
+            onRestoreDefaultItems={restoreDefaultItems}
             onOpenTripSetup={() => setShowTripSetupModal(true)}
           />
         )}
@@ -95,6 +110,7 @@ export default function App() {
           <GearPage
             gearList={userGear}
             onAddGear={handleAddGear}
+            onUpdateGear={handleUpdateGear}
             onDeleteGear={handleDeleteGear}
           />
         )}

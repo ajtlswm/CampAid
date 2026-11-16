@@ -52,8 +52,13 @@ export default function MapPage({
   onOpenTripSetup,
 }: MapPageProps) {
   const hasDestination = Boolean(hasSchedule && destinationName);
-  const activeLat = hasDestination && destinationLat ? destinationLat : DEFAULT_LAT;
-  const activeLng = hasDestination && destinationLng ? destinationLng : DEFAULT_LNG;
+  const [geocodedPos, setGeocodedPos] = useState<{ lat: number; lng: number } | null>(null);
+  const activeLat = hasDestination
+    ? geocodedPos?.lat ?? destinationLat ?? DEFAULT_LAT
+    : DEFAULT_LAT;
+  const activeLng = hasDestination
+    ? geocodedPos?.lng ?? destinationLng ?? DEFAULT_LNG
+    : DEFAULT_LNG;
   const shortCampName = useMemo(() => getShortCampName(destinationName, 6), [destinationName]);
   const shortDestAddress = useMemo(
     () => getShortAddress(destinationAddress),
@@ -71,6 +76,7 @@ export default function MapPage({
     hasDestination ? 'ROUTE' : 'CURRENT'
   );
   const [selectedStation, setSelectedStation] = useState<KeroseneStation | null>(null);
+  const [isCardExpanded, setIsCardExpanded] = useState(true);
   const [showCampTooltip, setShowCampTooltip] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [kakaoReady, setKakaoReady] = useState(false);
@@ -78,6 +84,27 @@ export default function MapPage({
     lat: activeLat,
     lng: activeLng,
   });
+
+  // 카카오 Geocoder로 목적지 캠핑장 도로명/지번 주소의 실제 정밀 좌표 보정 (강/오차 방지)
+  useEffect(() => {
+    setGeocodedPos(null);
+    if (!kakaoReady || !hasDestination || !window.kakao?.maps?.services) return;
+
+    const rawAddr = (destinationAddress || '').replace(/\([^)]*\)/g, '').trim();
+    if (!rawAddr || rawAddr === '사용자 지정 캠핑장') return;
+
+    const geocoder = new window.kakao.maps.services.Geocoder();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    geocoder.addressSearch(rawAddr, (result: any[], status: string) => {
+      if (status === window.kakao.maps.services.Status.OK && result && result[0]) {
+        const exactLat = Number(result[0].y);
+        const exactLng = Number(result[0].x);
+        if (!Number.isNaN(exactLat) && !Number.isNaN(exactLng)) {
+          setGeocodedPos({ lat: exactLat, lng: exactLng });
+        }
+      }
+    });
+  }, [kakaoReady, hasDestination, destinationAddress, destinationName]);
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -188,6 +215,13 @@ export default function MapPage({
             lng: Number(c.getLng().toFixed(4)),
           });
         });
+
+        // 빈 지도 영역을 클릭하면 하단 상세 카드를 1줄 요약 바(미니 모드)로 접기
+        window.kakao.maps.event.addListener(mapInstanceRef.current, 'click', () => {
+          setIsCardExpanded(false);
+        });
+      } else {
+        mapInstanceRef.current.relayout();
       }
 
       // 기존 오버레이 제거
@@ -248,41 +282,66 @@ export default function MapPage({
         overlaysRef.current.push(campOverlay);
       }
 
-      // 2) 등유 주유소 가격 커스텀 마커 렌더링
+      // 2) 등유 주유소 가격 커스텀 마커 렌더링 (현재 선택된 주유소는 선명한 로얄블루 #2563EB + 후광 링으로 강조)
       filteredStations.forEach((st) => {
         const isLowest = st.kerosene_price === lowestPrice;
         const isSelected = selectedStation?.station_id === st.station_id;
 
+        const bgColor = isSelected ? '#2563EB' : isLowest ? '#FF4D4D' : '#FFFFFF';
+        const textColor = isSelected || isLowest ? '#FFFFFF' : '#111827';
+        const borderColor = isSelected ? '#FFFFFF' : isLowest ? '#E63946' : '#1E3F20';
+        const boxShadow = isSelected
+          ? '0 0 0 4px rgba(37, 99, 235, 0.38), 0 6px 14px rgba(0,0,0,0.3)'
+          : '0 4px 10px rgba(0,0,0,0.18)';
+
         const el = document.createElement('div');
         el.style.cursor = 'pointer';
         el.innerHTML = `
-          <div style="
-            background: ${isLowest ? '#FF4D4D' : isSelected ? '#1E3F20' : '#FFFFFF'};
-            color: ${isLowest || isSelected ? '#FFFFFF' : '#111827'};
-            border: 2px solid ${isLowest ? '#E63946' : '#1E3F20'};
-            padding: 4px 10px;
-            border-radius: 9999px;
-            font-weight: 800;
-            font-size: 12px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.18);
-            white-space: nowrap;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-          ">
-            <span>${isLowest ? '🔥' : '⛽'}</span>
-            <span>${st.kerosene_price.toLocaleString()}원</span>
+          <div style="display:flex;flex-direction:column;align-items:center;">
+            <div style="
+              background: ${bgColor};
+              color: ${textColor};
+              border: ${isSelected ? '2.5px' : '2px'} solid ${borderColor};
+              padding: ${isSelected ? '5px 12px' : '4px 10px'};
+              border-radius: 9999px;
+              font-weight: 800;
+              font-size: ${isSelected ? '13px' : '12px'};
+              box-shadow: ${boxShadow};
+              transform: ${isSelected ? 'scale(1.08)' : 'scale(1)'};
+              white-space: nowrap;
+              display: flex;
+              align-items: center;
+              gap: 4px;
+              transition: all 0.15s ease;
+            ">
+              <span>${isSelected ? '📍' : isLowest ? '🔥' : '⛽'}</span>
+              <span>${st.kerosene_price.toLocaleString()}원</span>
+              ${isSelected ? '<span style="font-size:10px;opacity:0.95;">✓</span>' : ''}
+            </div>
+            ${
+              isSelected
+                ? `<div style="
+                    width: 0;
+                    height: 0;
+                    border-left: 6px solid transparent;
+                    border-right: 6px solid transparent;
+                    border-top: 7px solid #2563EB;
+                    margin-top: -1px;
+                  "></div>`
+                : ''
+            }
           </div>
         `;
         el.onclick = () => {
           setSelectedStation(st);
+          setIsCardExpanded(true);
         };
 
         const overlay = new window.kakao.maps.CustomOverlay({
           position: new window.kakao.maps.LatLng(st.latitude, st.longitude),
           content: el,
-          yAnchor: 1.3,
-          zIndex: isSelected ? 25 : isLowest ? 20 : 10,
+          yAnchor: isSelected ? 1.25 : 1.3,
+          zIndex: isSelected ? 35 : isLowest ? 20 : 10,
         });
         overlay.setMap(mapInstanceRef.current);
         overlaysRef.current.push(overlay);
@@ -301,9 +360,43 @@ export default function MapPage({
     activeLng,
   ]);
 
+  // 지정 좌표 기준 주유소 검색 및 지도 범위 자동 보정
+  const executeStationSearch = async (lat: number, lng: number, label: string) => {
+    setIsLoading(true);
+    const result = await fetchKeroseneStations(lat, lng, 10000, label);
+    setStations(result.stations);
+    setDataSource(result.source);
+
+    if (result.stations.length > 0) {
+      const sorted = [...result.stations].sort((a, b) => a.kerosene_price - b.kerosene_price);
+      setSelectedStation(sorted[0]);
+
+      // 현재 화면(Bounds) 안에 검색된 주유소가 하나도 안 보일 정도로 확대되어 있다면
+      // 가장 가까운 주유소들이 화면에 보이도록 지도 범위를 자동 조정
+      if (mapInstanceRef.current && kakaoReady && window.kakao?.maps) {
+        try {
+          const currentBounds = mapInstanceRef.current.getBounds();
+          const anyVisible = result.stations.some((st) =>
+            currentBounds.contain(new window.kakao.maps.LatLng(st.latitude, st.longitude))
+          );
+          if (!anyVisible) {
+            const bounds = new window.kakao.maps.LatLngBounds();
+            bounds.extend(new window.kakao.maps.LatLng(lat, lng));
+            result.stations.slice(0, 3).forEach((st) => {
+              bounds.extend(new window.kakao.maps.LatLng(st.latitude, st.longitude));
+            });
+            mapInstanceRef.current.setBounds(bounds);
+          }
+        } catch {
+          // ignore bounds error
+        }
+      }
+    }
+    setIsLoading(false);
+  };
+
   // 현 지도 중심 또는 목적지 중심 재검색
   const handleReSearch = async () => {
-    setIsLoading(true);
     const isRouteMode = searchMode === 'ROUTE' && hasDestination;
     let lat = isRouteMode ? activeLat : currentMapCenter.lat;
     let lng = isRouteMode ? activeLng : currentMapCenter.lng;
@@ -317,14 +410,20 @@ export default function MapPage({
     }
 
     const label = isRouteMode ? destinationName : '현재 지도 중심';
-    const result = await fetchKeroseneStations(lat, lng, 5000, label);
-    setStations(result.stations);
-    setDataSource(result.source);
-    if (result.stations.length > 0) {
-      const sorted = [...result.stations].sort((a, b) => a.kerosene_price - b.kerosene_price);
-      setSelectedStation(sorted[0]);
+    await executeStationSearch(lat, lng, label);
+  };
+
+  // '현재 중심 탐색' 탭 클릭 시 즉시 현재 지도 중심 좌표로 주유소 검색
+  const handleSwitchToCurrentMode = async () => {
+    setSearchMode('CURRENT');
+    let lat = currentMapCenter.lat;
+    let lng = currentMapCenter.lng;
+    if (mapInstanceRef.current && kakaoReady) {
+      const center = mapInstanceRef.current.getCenter();
+      lat = center.getLat();
+      lng = center.getLng();
     }
-    setIsLoading(false);
+    await executeStationSearch(lat, lng, '현재 지도 중심');
   };
 
   // 목적지 캠핑장 위치로 지도 중심 즉시 이동
@@ -363,7 +462,7 @@ export default function MapPage({
   };
 
   return (
-    <div className="page-content max-w-md mx-auto flex flex-col h-[calc(100vh-56px)]">
+    <div className="max-w-md mx-auto flex flex-col min-h-[calc(100dvh-56px)] pb-14">
       {/* 3.1 상단 검색 모드 전환 & 목적지 캠핑장 동기화 배너 */}
       <div className="bg-white px-4 pt-3 pb-2.5 shadow-sm border-b border-gray-100 z-20 space-y-2">
         <div className="flex items-center gap-1.5">
@@ -379,7 +478,7 @@ export default function MapPage({
               {hasDestination ? `🏕️ ${shortCampName} 주변` : '🚗 목적지 경로 (미설정)'}
             </button>
             <button
-              onClick={() => setSearchMode('CURRENT')}
+              onClick={handleSwitchToCurrentMode}
               className={`flex-1 py-1.5 text-xs font-bold rounded-lg transition-all ${
                 !hasDestination || searchMode === 'CURRENT'
                   ? 'bg-forest text-white shadow-sm'
@@ -457,14 +556,14 @@ export default function MapPage({
       </div>
 
       {/* 3.1 & 3.3 통합 지도 뷰 + 커스텀 가격 말풍선 마커 */}
-      <div className="relative flex-1 bg-[#e8efe9] overflow-hidden">
+      <div className="relative flex-1 min-h-[300px] bg-[#e8efe9] overflow-hidden">
         <div
           ref={mapContainerRef}
-          className={`w-full h-full ${kakaoReady ? 'block' : 'hidden'}`}
+          className={`absolute inset-0 w-full h-full ${kakaoReady ? 'block' : 'hidden'}`}
         />
 
         {!kakaoReady && (
-          <div className="w-full h-full relative select-none overflow-hidden bg-gradient-to-br from-[#e4efe7] via-[#eef3ef] to-[#dde8e0]">
+          <div className="absolute inset-0 w-full h-full select-none overflow-hidden bg-gradient-to-br from-[#e4efe7] via-[#eef3ef] to-[#dde8e0]">
             <svg className="absolute inset-0 w-full h-full opacity-40" xmlns="http://www.w3.org/2000/svg">
               <defs>
                 <pattern id="grid" width="36" height="36" patternUnits="userSpaceOnUse">
@@ -521,17 +620,20 @@ export default function MapPage({
               return (
                 <button
                   key={st.station_id}
-                  onClick={() => setSelectedStation(st)}
+                  onClick={() => {
+                    setSelectedStation(st);
+                    setIsCardExpanded(true);
+                  }}
                   style={{ top: pos.top, left: pos.left }}
                   className={`absolute -translate-x-1/2 -translate-y-1/2 px-3 py-1.5 rounded-full font-extrabold text-xs shadow-md transition-transform flex items-center gap-1 border-2 ${
-                    isLowest
-                      ? 'bg-aid-red text-white border-white scale-110 z-20 animate-bounce'
-                      : isSelected
-                      ? 'bg-forest text-white border-white scale-105 z-10'
-                      : 'bg-white text-gray-900 border-forest hover:scale-105'
+                    isSelected
+                      ? 'bg-[#2563EB] text-white border-white ring-4 ring-blue-500/35 scale-110 z-30'
+                      : isLowest
+                      ? 'bg-aid-red text-white border-white scale-105 z-20'
+                      : 'bg-white text-gray-900 border-forest hover:scale-105 z-10'
                   }`}
                 >
-                  <span>{isLowest ? '🔥' : '⛽'}</span>
+                  <span>{isSelected ? '📍' : isLowest ? '🔥' : '⛽'}</span>
                   <span>{st.kerosene_price.toLocaleString()}원</span>
                 </button>
               );
@@ -555,98 +657,132 @@ export default function MapPage({
         </button>
       </div>
 
-      {/* 3.4 하단 상세 슬라이드 카드 (위도/경도 및 목적지까지 거리 포함) */}
+      {/* 3.4 하단 상세 슬라이드 카드 (방안 1: 1줄 미니 요약 바 ↔ 상세 펼침 토글) */}
       {selectedStation && (
-        <section className="bg-white rounded-t-2xl p-4 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] border-t border-gray-100 z-20 space-y-2.5">
-          <div className="flex items-start justify-between">
-            <div>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <span className="text-[10px] font-bold bg-forest/10 text-forest px-2 py-0.5 rounded">
+        <section className="bg-white rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.08)] border-t border-gray-100 z-20 transition-all">
+          {/* 상단 드래그 핸들 & 접기/펼치기 토글 헤더 */}
+          <div
+            onClick={() => {
+              setIsCardExpanded((prev) => !prev);
+              setTimeout(() => mapInstanceRef.current?.relayout?.(), 60);
+            }}
+            className="px-4 pt-2 pb-2.5 cursor-pointer select-none hover:bg-gray-50/70 transition-colors rounded-t-2xl"
+          >
+            <div className="w-9 h-1 bg-gray-300 rounded-full mx-auto mb-2" />
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 min-w-0">
+                <span className="text-[10px] font-bold bg-[#2563EB] text-white px-2 py-0.5 rounded shrink-0">
+                  📍 선택됨
+                </span>
+                <span className="text-[10px] font-bold bg-forest/10 text-forest px-2 py-0.5 rounded shrink-0">
                   {BRAND_LABELS[selectedStation.brand_code]}
                 </span>
-                {selectedStation.kerosene_price === lowestPrice && (
-                  <span className="text-[10px] font-bold bg-aid-red text-white px-2 py-0.5 rounded">
-                    구역 최저가
-                  </span>
-                )}
-                {selectedStation.is_24_hours && (
-                  <span className="text-[10px] font-bold bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
-                    24시 영업
-                  </span>
-                )}
-                {selectedStation.has_thin_nozzle && (
-                  <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">
-                    얇은 주유건 보유
-                  </span>
-                )}
+                <h3 className="text-sm font-extrabold text-gray-900 truncate">
+                  {selectedStation.station_name}
+                </h3>
               </div>
-              <h3 className="text-base font-bold text-gray-900 mt-1">
-                {selectedStation.station_name}
-              </h3>
-              <p className="text-xs text-gray-500">
-                {selectedStation.address}
-                {hasDestination
-                  ? ` · 🏕️ ${destinationName}까지 약 ${getDistanceKm(
-                      activeLat,
-                      activeLng,
-                      selectedStation.latitude,
-                      selectedStation.longitude
-                    )}km`
-                  : ''}
-              </p>
-              <p className="text-[11px] font-mono text-gray-400 mt-0.5">
-                🌐 주유소 좌표: 위도 {selectedStation.latitude.toFixed(4)}° N, 경도{' '}
-                {selectedStation.longitude.toFixed(4)}° E
-              </p>
-            </div>
 
-            <div className="text-right shrink-0">
-              <span className="text-[10px] text-gray-400 block">실내등유 1L</span>
-              <span className="text-xl font-extrabold text-aid-red">
-                {selectedStation.kerosene_price.toLocaleString()}원
-              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-base font-extrabold text-aid-red">
+                  {selectedStation.kerosene_price.toLocaleString()}원
+                </span>
+                <span className="text-[11px] font-bold text-forest bg-surface px-2.5 py-1 rounded-lg border border-gray-200">
+                  {isCardExpanded ? '▼ 접기' : '▲ 상세 / 길찾기'}
+                </span>
+              </div>
             </div>
           </div>
 
-          {selectedStation.review_summary && (
-            <div className="bg-surface rounded-xl px-3 py-2 text-xs text-gray-700 flex items-center gap-2">
-              <span>💬</span>
-              <span className="font-medium">{selectedStation.review_summary}</span>
+          {/* 펼쳐진 상태일 때만 상세 정보 · 주유소 칩 · 내비게이션 버튼 노출 */}
+          {isCardExpanded && (
+            <div className="px-4 pb-3.5 pt-1 space-y-2.5 border-t border-gray-100">
+              <div className="flex items-center justify-between flex-wrap gap-1">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {selectedStation.kerosene_price === lowestPrice && (
+                    <span className="text-[10px] font-bold bg-aid-red text-white px-2 py-0.5 rounded">
+                      구역 최저가
+                    </span>
+                  )}
+                  {selectedStation.is_24_hours && (
+                    <span className="text-[10px] font-bold bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
+                      24시 영업
+                    </span>
+                  )}
+                  {selectedStation.has_thin_nozzle && (
+                    <span className="text-[10px] font-bold bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded">
+                      얇은 주유건 보유
+                    </span>
+                  )}
+                </div>
+                <span className="text-[10px] text-gray-400">실내등유 1L 기준</span>
+              </div>
+
+              <div>
+                <p className="text-xs text-gray-600">
+                  {selectedStation.address}
+                  {hasDestination
+                    ? ` · 🏕️ ${destinationName}까지 약 ${getDistanceKm(
+                        activeLat,
+                        activeLng,
+                        selectedStation.latitude,
+                        selectedStation.longitude
+                      )}km`
+                    : ''}
+                </p>
+                <p className="text-[11px] font-mono text-gray-400 mt-0.5">
+                  🌐 좌표: {selectedStation.latitude.toFixed(4)}° N,{' '}
+                  {selectedStation.longitude.toFixed(4)}° E
+                </p>
+              </div>
+
+              {selectedStation.review_summary && (
+                <div className="bg-surface rounded-xl px-3 py-2 text-xs text-gray-700 flex items-center gap-2">
+                  <span>💬</span>
+                  <span className="font-medium">{selectedStation.review_summary}</span>
+                </div>
+              )}
+
+              <div className="flex gap-1.5 overflow-x-auto pb-1">
+                {filteredStations.map((st) => (
+                  <button
+                    key={st.station_id}
+                    onClick={() => {
+                      setSelectedStation(st);
+                      if (mapInstanceRef.current && kakaoReady && window.kakao?.maps) {
+                        mapInstanceRef.current.panTo(
+                          new window.kakao.maps.LatLng(st.latitude, st.longitude)
+                        );
+                      }
+                    }}
+                    className={`shrink-0 text-[11px] px-2.5 py-1 rounded-lg border transition-colors ${
+                      st.station_id === selectedStation.station_id
+                        ? 'bg-[#2563EB] text-white border-[#2563EB] font-bold shadow-xs'
+                        : 'bg-gray-50 text-gray-600 border-gray-200'
+                    }`}
+                  >
+                    {st.station_name} ({st.kerosene_price.toLocaleString()}원)
+                  </button>
+                ))}
+              </div>
+
+              <div className="grid grid-cols-2 gap-2 pt-0.5">
+                <button
+                  onClick={() => handleStartNavigation('KAKAO', selectedStation)}
+                  className="bg-[#FEE500] hover:bg-[#FDD800] text-gray-900 font-bold text-xs py-2.5 rounded-xl shadow-sm flex items-center justify-center gap-1.5"
+                >
+                  <span>🧭</span>
+                  <span>카카오내비 길찾기</span>
+                </button>
+                <button
+                  onClick={() => handleStartNavigation('TMAP', selectedStation)}
+                  className="bg-forest hover:bg-forest-600 text-white font-bold text-xs py-2.5 rounded-xl shadow-sm flex items-center justify-center gap-1.5"
+                >
+                  <span>🚗</span>
+                  <span>티맵(TMAP) 길찾기</span>
+                </button>
+              </div>
             </div>
           )}
-
-          <div className="flex gap-1.5 overflow-x-auto pb-1">
-            {filteredStations.map((st) => (
-              <button
-                key={st.station_id}
-                onClick={() => setSelectedStation(st)}
-                className={`shrink-0 text-[11px] px-2.5 py-1 rounded-lg border transition-colors ${
-                  st.station_id === selectedStation.station_id
-                    ? 'bg-forest text-white border-forest font-bold'
-                    : 'bg-gray-50 text-gray-600 border-gray-200'
-                }`}
-              >
-                {st.station_name} ({st.kerosene_price.toLocaleString()}원)
-              </button>
-            ))}
-          </div>
-
-          <div className="grid grid-cols-2 gap-2 pt-0.5">
-            <button
-              onClick={() => handleStartNavigation('KAKAO', selectedStation)}
-              className="bg-[#FEE500] hover:bg-[#FDD800] text-gray-900 font-bold text-xs py-2.5 rounded-xl shadow-sm flex items-center justify-center gap-1.5"
-            >
-              <span>🧭</span>
-              <span>카카오내비 길찾기</span>
-            </button>
-            <button
-              onClick={() => handleStartNavigation('TMAP', selectedStation)}
-              className="bg-forest hover:bg-forest-600 text-white font-bold text-xs py-2.5 rounded-xl shadow-sm flex items-center justify-center gap-1.5"
-            >
-              <span>🚗</span>
-              <span>티맵(TMAP) 길찾기</span>
-            </button>
-          </div>
         </section>
       )}
     </div>

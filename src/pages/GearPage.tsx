@@ -5,6 +5,10 @@ import { CATEGORY_LABELS, SEASON_LABELS } from '../types';
 interface GearPageProps {
   gearList: UserGear[];
   onAddGear: (gear: Omit<UserGear, 'gear_id' | 'user_id' | 'created_at'>) => void;
+  onUpdateGear: (
+    gearId: string,
+    gear: Omit<UserGear, 'gear_id' | 'user_id' | 'created_at'>
+  ) => void;
   onDeleteGear: (gearId: string) => void;
 }
 
@@ -20,16 +24,42 @@ const FILTER_TABS: { id: 'ALL' | GearCategory; label: string }[] = [
 
 const ALL_SEASONS: SeasonTag[] = ['SPRING', 'SUMMER', 'AUTUMN', 'WINTER'];
 
-export default function GearPage({ gearList, onAddGear, onDeleteGear }: GearPageProps) {
+export default function GearPage({
+  gearList,
+  onAddGear,
+  onUpdateGear,
+  onDeleteGear,
+}: GearPageProps) {
   const [selectedTab, setSelectedTab] = useState<'ALL' | GearCategory>('ALL');
   const [showModal, setShowModal] = useState(false);
+  const [editingGearId, setEditingGearId] = useState<string | null>(null);
 
-  // 장비 등록 폼 상태
+  // 장비 등록/수정 폼 상태
   const [gearName, setGearName] = useState('');
   const [category, setCategory] = useState<GearCategory>('WINTER_AID');
   const [purchasePrice, setPurchasePrice] = useState('');
   const [selectedSeasons, setSelectedSeasons] = useState<SeasonTag[]>(['WINTER']);
   const [customMemo, setCustomMemo] = useState('');
+
+  const handleOpenCreateModal = () => {
+    setEditingGearId(null);
+    setGearName('');
+    setCategory('WINTER_AID');
+    setPurchasePrice('');
+    setSelectedSeasons(['WINTER']);
+    setCustomMemo('');
+    setShowModal(true);
+  };
+
+  const handleOpenEditModal = (gear: UserGear) => {
+    setEditingGearId(gear.gear_id);
+    setGearName(gear.gear_name);
+    setCategory(gear.category);
+    setPurchasePrice(gear.purchase_price > 0 ? String(gear.purchase_price) : '');
+    setSelectedSeasons(gear.season_tags.length > 0 ? gear.season_tags : ['WINTER']);
+    setCustomMemo(gear.custom_memo ?? '');
+    setShowModal(true);
+  };
 
   // 총 자산 합산
   const totalAssetValue = useMemo(
@@ -52,14 +82,21 @@ export default function GearPage({ gearList, onAddGear, onDeleteGear }: GearPage
     e.preventDefault();
     if (!gearName.trim()) return;
 
-    onAddGear({
+    const payload = {
       gear_name: gearName.trim(),
       category,
       purchase_price: Number(purchasePrice) || 0,
-      season_tags: selectedSeasons.length > 0 ? selectedSeasons : ['WINTER'],
+      season_tags: selectedSeasons.length > 0 ? selectedSeasons : (['WINTER'] as SeasonTag[]),
       custom_memo: customMemo.trim() || undefined,
-    });
+    };
 
+    if (editingGearId) {
+      onUpdateGear(editingGearId, payload);
+    } else {
+      onAddGear(payload);
+    }
+
+    setEditingGearId(null);
     setGearName('');
     setPurchasePrice('');
     setCustomMemo('');
@@ -93,7 +130,7 @@ export default function GearPage({ gearList, onAddGear, onDeleteGear }: GearPage
             </p>
           </div>
           <button
-            onClick={() => setShowModal(true)}
+            onClick={handleOpenCreateModal}
             className="bg-aid-red hover:bg-aid-red-600 text-white text-xs font-bold px-3.5 py-2 rounded-xl shadow transition-colors"
           >
             + 새 장비 등록
@@ -148,12 +185,21 @@ export default function GearPage({ gearList, onAddGear, onDeleteGear }: GearPage
                       ? `${gear.purchase_price.toLocaleString()}원`
                       : '가격 미입력'}
                   </span>
-                  <button
-                    onClick={() => onDeleteGear(gear.gear_id)}
-                    className="block ml-auto mt-1 text-[10px] text-gray-400 hover:text-aid-red"
-                  >
-                    삭제
-                  </button>
+                  <div className="flex items-center justify-end gap-2 mt-1">
+                    <button
+                      onClick={() => handleOpenEditModal(gear)}
+                      className="text-[11px] font-bold text-gray-500 hover:text-forest"
+                    >
+                      수정
+                    </button>
+                    <span className="text-[10px] text-gray-300">|</span>
+                    <button
+                      onClick={() => onDeleteGear(gear.gear_id)}
+                      className="text-[11px] font-bold text-gray-400 hover:text-aid-red"
+                    >
+                      삭제
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -178,11 +224,13 @@ export default function GearPage({ gearList, onAddGear, onDeleteGear }: GearPage
         })}
       </div>
 
-      {/* 4.3 장비 등록 모달 */}
+      {/* 4.3 장비 등록/수정 모달 */}
       {showModal && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
           <div className="bg-white rounded-2xl w-full max-w-sm p-5 space-y-4 shadow-xl">
-            <h3 className="font-bold text-base text-gray-900">⛺ 새 캠핑 장비 등록</h3>
+            <h3 className="font-bold text-base text-gray-900">
+              {editingGearId ? '✏️ 캠핑 장비 정보 수정' : '⛺ 새 캠핑 장비 등록'}
+            </h3>
             <form onSubmit={handleSubmit} className="space-y-3">
               <div>
                 <label className="block text-xs font-bold text-gray-600 mb-1">장비 모델명</label>
@@ -273,7 +321,7 @@ export default function GearPage({ gearList, onAddGear, onDeleteGear }: GearPage
                   type="submit"
                   className="flex-1 py-2.5 text-xs font-bold text-white bg-forest rounded-xl"
                 >
-                  등록하기
+                  {editingGearId ? '수정 저장' : '등록하기'}
                 </button>
               </div>
             </form>

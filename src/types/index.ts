@@ -3,7 +3,14 @@
 // 명세서 §4 기반
 // ============================================
 
-export type GearCategory = 'TENT' | 'COOKING' | 'SLEEPING' | 'LIGHTING' | 'WINTER_AID' | 'ETC';
+export type GearCategory =
+  | 'WINTER_AID'
+  | 'TENT'
+  | 'COOKING'
+  | 'SLEEPING'
+  | 'LIGHTING'
+  | 'ETC'
+  | 'SHOPPING';
 export type SeasonTag = 'SPRING' | 'SUMMER' | 'AUTUMN' | 'WINTER';
 export type BrandCode = 'SKE' | 'GSC' | 'HDO' | 'SOL' | 'RTO' | 'ETC';
 
@@ -81,12 +88,13 @@ export interface WeatherInfo {
 
 // 카테고리 한글 레이블
 export const CATEGORY_LABELS: Record<GearCategory, string> = {
-  TENT: '텐트/타프',
-  COOKING: '취사',
-  SLEEPING: '침구',
-  LIGHTING: '조명',
-  WINTER_AID: '동계용품',
-  ETC: '기타',
+  WINTER_AID: '동계/보온 용품',
+  TENT: '텐트 / 타프',
+  COOKING: '취사 / 주방',
+  SLEEPING: '침구 / 수면',
+  LIGHTING: '조명 / 전기',
+  ETC: '기타 용품',
+  SHOPPING: '구매할거',
 };
 
 // 계절 한글 레이블

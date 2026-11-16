@@ -132,8 +132,8 @@ export const CAMPSITE_PRESETS: CampsitePreset[] = [
     name: '한솔스테이 캠핑장',
     region: '경기 연천',
     address: '경기도 연천군 장남면 장백로278번길 4 (원당리 421-4)',
-    lat: 37.9814,
-    lng: 126.8915,
+    lat: 37.9862,
+    lng: 126.8936,
     tempOffset: -4,
   },
   {

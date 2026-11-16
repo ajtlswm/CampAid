@@ -183,9 +183,28 @@ export default function TripSetupModal({
     setDestAddress(preset.address);
     setDestLat(preset.lat);
     setDestLng(preset.lng);
-    setTitle(`${preset.region} ${preset.name} 캠핑`);
+    setTitle(
+      preset.region ? `${preset.name} 캠핑(${preset.region})` : `${preset.name} 캠핑`
+    );
     setSearchQuery('');
     setErrorMsg('');
+
+    // 도로명/지번 주소가 있으면 카카오 Geocoder로 실제 건물 좌표 정밀 보정
+    if (kakaoReady && window.kakao?.maps?.services && preset.address) {
+      const cleanAddr = preset.address.replace(/\([^)]*\)/g, '').trim();
+      const geocoder = new window.kakao.maps.services.Geocoder();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      geocoder.addressSearch(cleanAddr, (result: any[], status: string) => {
+        if (status === window.kakao.maps.services.Status.OK && result && result[0]) {
+          const exactLat = Number(result[0].y);
+          const exactLng = Number(result[0].x);
+          if (!Number.isNaN(exactLat) && !Number.isNaN(exactLng)) {
+            setDestLat(exactLat);
+            setDestLng(exactLng);
+          }
+        }
+      });
+    }
   };
 
   const handleApplyCustomQuery = () => {
