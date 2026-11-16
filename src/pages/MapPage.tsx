@@ -107,10 +107,22 @@ export default function MapPage({
   }, [kakaoReady, hasDestination, destinationAddress, destinationName]);
 
   const mapContainerRef = useRef<HTMLDivElement | null>(null);
+  const stationCardRef = useRef<HTMLElement | null>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const mapInstanceRef = useRef<any>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const overlaysRef = useRef<any[]>([]);
+
+  // 주유소 선택 또는 상세창 펼침 시 하단 상세정보·길찾기 버튼까지 부드럽게 스크롤 이동
+  const scrollToStationCard = () => {
+    setTimeout(() => {
+      mapInstanceRef.current?.relayout?.();
+      window.scrollTo({
+        top: document.documentElement.scrollHeight,
+        behavior: 'smooth',
+      });
+    }, 80);
+  };
 
   // 목적지 캠핑장이 변경될 때마다 자동으로 해당 위도/경도 주변 등유 주유소 동기화!
   useEffect(() => {
@@ -335,6 +347,7 @@ export default function MapPage({
         el.onclick = () => {
           setSelectedStation(st);
           setIsCardExpanded(true);
+          scrollToStationCard();
         };
 
         const overlay = new window.kakao.maps.CustomOverlay({
@@ -623,6 +636,7 @@ export default function MapPage({
                   onClick={() => {
                     setSelectedStation(st);
                     setIsCardExpanded(true);
+                    scrollToStationCard();
                   }}
                   style={{ top: pos.top, left: pos.left }}
                   className={`absolute -translate-x-1/2 -translate-y-1/2 px-3 py-1.5 rounded-full font-extrabold text-xs shadow-md transition-transform flex items-center gap-1 border-2 ${
@@ -659,12 +673,23 @@ export default function MapPage({
 
       {/* 3.4 하단 상세 슬라이드 카드 (방안 1: 1줄 미니 요약 바 ↔ 상세 펼침 토글) */}
       {selectedStation && (
-        <section className="bg-white rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.08)] border-t border-gray-100 z-20 transition-all">
+        <section
+          ref={stationCardRef}
+          className="bg-white rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.08)] border-t border-gray-100 z-20 transition-all"
+        >
           {/* 상단 드래그 핸들 & 접기/펼치기 토글 헤더 */}
           <div
             onClick={() => {
-              setIsCardExpanded((prev) => !prev);
-              setTimeout(() => mapInstanceRef.current?.relayout?.(), 60);
+              const nextExpanded = !isCardExpanded;
+              setIsCardExpanded(nextExpanded);
+              if (nextExpanded) {
+                scrollToStationCard();
+              } else {
+                setTimeout(() => {
+                  mapInstanceRef.current?.relayout?.();
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }, 60);
+              }
             }}
             className="px-4 pt-2 pb-2.5 cursor-pointer select-none hover:bg-gray-50/70 transition-colors rounded-t-2xl"
           >
@@ -753,6 +778,7 @@ export default function MapPage({
                           new window.kakao.maps.LatLng(st.latitude, st.longitude)
                         );
                       }
+                      scrollToStationCard();
                     }}
                     className={`shrink-0 text-[11px] px-2.5 py-1 rounded-lg border transition-colors ${
                       st.station_id === selectedStation.station_id
