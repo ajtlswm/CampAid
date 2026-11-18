@@ -2,9 +2,9 @@ import { useState, useMemo, useEffect } from 'react';
 import type { CampingChecklist, CampsitePreset } from '../../types';
 import {
   CAMPSITE_PRESETS,
-  estimateCampingClimate,
   formatStayDuration,
 } from '../../data/campsitePresets';
+import { useCampingWeather } from '../../hooks/useCampingWeather';
 import { searchCampsitesNationwide } from '../../services/campsiteSearchApi';
 import type { UpdateScheduleParams } from '../../hooks/useChecklist';
 
@@ -125,14 +125,11 @@ export default function TripSetupModal({
     };
   }, [searchQuery, kakaoReady]);
 
-  // 선택한 날짜 + 캠핑장 위도 기반 예상 기후 미리보기
-  const climatePreview = useMemo(
-    () =>
-      estimateCampingClimate(
-        startDate || new Date().toISOString().slice(0, 10),
-        destLat ?? 37.5665
-      ),
-    [startDate, destLat]
+  // 선택한 날짜 + 캠핑장 위경도 기반 실시간 기상 예보 미리보기
+  const climatePreview = useCampingWeather(
+    startDate || undefined,
+    destLat ?? 37.5665,
+    destLng ?? 126.978
   );
 
   const stayLabel = useMemo(() => {

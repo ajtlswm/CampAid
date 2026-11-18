@@ -3,10 +3,10 @@ import type { CampingChecklist, GearCategory, UserGear } from '../types';
 import { CATEGORY_LABELS } from '../types';
 import ProgressBar from '../components/ui/ProgressBar';
 import {
-  estimateCampingClimate,
   formatStayDuration,
   getSeasonalRecommendations,
 } from '../data/campsitePresets';
+import { useCampingWeather } from '../hooks/useCampingWeather';
 
 interface ChecklistPageProps {
   checklist: CampingChecklist;
@@ -60,13 +60,10 @@ export default function ChecklistPage({
   const [newItemCategory, setNewItemCategory] = useState<GearCategory>('WINTER_AID');
   const [copiedInvite, setCopiedInvite] = useState(false);
 
-  const climate = useMemo(
-    () =>
-      estimateCampingClimate(
-        hasSchedule ? checklist.target_date : new Date().toISOString().slice(0, 10),
-        hasSchedule ? checklist.destination_lat : 37.5665
-      ),
-    [hasSchedule, checklist.target_date, checklist.destination_lat]
+  const climate = useCampingWeather(
+    hasSchedule ? checklist.target_date : undefined,
+    hasSchedule ? checklist.destination_lat ?? 37.5665 : 37.5665,
+    hasSchedule ? checklist.destination_lng ?? 126.978 : 126.978
   );
 
   const recommendations = useMemo(
@@ -100,43 +97,50 @@ export default function ChecklistPage({
       {/* 2.1 체크리스트 상세 헤더 (일정 있을 때 vs 일정 없을 때) */}
       <section className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
         {hasSchedule ? (
-          <div className="flex items-start justify-between gap-2">
-            <div>
-              <div className="flex items-center gap-1.5 flex-wrap">
+          <div className="space-y-1.5">
+            {/* 1줄: 캠핑장/기온 배지 & 우측 친구 초대 버튼 */}
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 min-w-0">
                 <button
                   onClick={onOpenTripSetup}
-                  className="text-[11px] font-bold text-forest bg-forest/10 hover:bg-forest hover:text-white px-2.5 py-0.5 rounded-full transition-colors flex items-center gap-1"
+                  className="text-[11px] font-bold text-forest bg-forest/10 hover:bg-forest hover:text-white px-2.5 py-0.5 rounded-full transition-colors flex items-center gap-1 truncate"
                 >
-                  <span>📍 {checklist.destination_name}</span>
-                  <span>✏️</span>
+                  <span className="truncate">📍 {checklist.destination_name}</span>
+                  <span className="shrink-0">✏️</span>
                 </button>
-                <span className="text-[11px] font-bold text-aid-red bg-aid-red/10 px-2 py-0.5 rounded-full">
+                <span className="text-[11px] font-bold text-aid-red bg-aid-red/10 px-2 py-0.5 rounded-full whitespace-nowrap shrink-0">
                   {climate.minTemp}℃ {climate.weatherIcon}
                 </span>
               </div>
 
-              <h2 className="text-lg font-bold text-gray-900 mt-1.5">{checklist.title}</h2>
-
               <button
-                onClick={onOpenTripSetup}
-                className="text-xs text-gray-500 hover:text-forest mt-0.5 flex items-center gap-1 font-medium"
+                onClick={handleCopyInvite}
+                className="shrink-0 bg-forest hover:bg-forest-600 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-sm transition-colors flex items-center gap-1 whitespace-nowrap"
               >
-                <span>
-                  🗓️ {checklist.target_date}
-                  {checklist.end_date && checklist.end_date !== checklist.target_date
-                    ? ` ~ ${checklist.end_date}`
-                    : ''}{' '}
-                  ({stayDuration})
-                </span>
-                <span className="underline text-forest font-bold ml-1">일정변경</span>
+                🔗 {copiedInvite ? '복사됨!' : '친구 초대'}
               </button>
             </div>
 
+            {/* 2줄: 캠핑 제목 (가로 전체폭 100% 사용 · 줄바꿈 방지) */}
+            <h2 className="text-lg font-bold text-gray-900 w-full whitespace-nowrap truncate">
+              {checklist.title}
+            </h2>
+
+            {/* 3줄: 캠핑 일정 날짜 & 일정변경 (가로 전체폭 100% 사용 · 줄바꿈 방지) */}
             <button
-              onClick={handleCopyInvite}
-              className="shrink-0 bg-forest hover:bg-forest-600 text-white text-xs font-bold px-3 py-2 rounded-xl shadow-sm transition-colors flex items-center gap-1"
+              onClick={onOpenTripSetup}
+              className="text-xs text-gray-500 hover:text-forest flex items-center gap-1.5 font-medium w-full whitespace-nowrap"
             >
-              🔗 {copiedInvite ? '복사됨!' : '친구 초대'}
+              <span className="whitespace-nowrap">
+                🗓️ {checklist.target_date}
+                {checklist.end_date && checklist.end_date !== checklist.target_date
+                  ? ` ~ ${checklist.end_date}`
+                  : ''}{' '}
+                ({stayDuration})
+              </span>
+              <span className="underline text-forest font-bold whitespace-nowrap shrink-0">
+                일정변경
+              </span>
             </button>
           </div>
         ) : (
@@ -188,34 +192,38 @@ export default function ChecklistPage({
 
       {/* 2.2 진척도 게이지 & 계절 연동 AI 추천 칩 */}
       <section className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <span className="text-sm font-bold text-gray-800">전체 준비 진척도</span>
-            <span className="text-sm font-extrabold text-forest">{progress}%</span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 whitespace-nowrap shrink-0">
+            <span className="text-sm font-bold text-gray-800 whitespace-nowrap">
+              전체 준비 진척도
+            </span>
+            <span className="text-sm font-extrabold text-forest whitespace-nowrap">
+              {progress}%
+            </span>
           </div>
-          <div className="flex items-center gap-1.5">
+          <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
               onClick={onResetAllChecks}
               disabled={!checklist.items.some((i) => i.is_checked)}
-              className="text-[11px] font-bold px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-surface disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+              className="text-[11px] font-bold px-2.5 py-1 rounded-lg border border-gray-200 text-gray-600 hover:bg-surface disabled:opacity-40 disabled:cursor-not-allowed transition-colors whitespace-nowrap shrink-0"
             >
-              🔄 체크 전체 해제
+              🔄 체크 해제
             </button>
             <button
               type="button"
               onClick={onRestoreDefaultItems}
-              className="text-[11px] font-bold px-2.5 py-1 rounded-lg border border-forest/25 text-forest hover:bg-forest/10 transition-colors"
+              className="text-[11px] font-bold px-2.5 py-1 rounded-lg border border-forest/25 text-forest hover:bg-forest/10 transition-colors whitespace-nowrap shrink-0"
             >
-              📋 기본 목록 복원
+              📋 기본 복원
             </button>
           </div>
         </div>
         <ProgressBar progress={progress} />
 
         <div className="pt-2">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-bold text-aid-red flex items-center gap-1">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <span className="text-xs font-bold text-aid-red flex items-center gap-1 whitespace-nowrap truncate">
               {climate.weatherIcon}{' '}
               {hasSchedule
                 ? `${climate.seasonLabel} (${climate.minTemp}℃) 맞춤 AI 추천`
@@ -223,7 +231,7 @@ export default function ChecklistPage({
             </span>
             <button
               onClick={() => setShowGearImportModal(true)}
-              className="text-[11px] font-bold text-forest underline"
+              className="text-[11px] font-bold text-forest underline whitespace-nowrap shrink-0"
             >
               내 장비고에서 가져오기
             </button>

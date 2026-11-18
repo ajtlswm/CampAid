@@ -117,3 +117,18 @@ export const BRAND_LABELS: Record<BrandCode, string> = {
 
 // 등유 키워드 (크로스 트리거용)
 export const KEROSENE_KEYWORDS = ['팬히터', '난로', '등유', '등유통', '제리캔'];
+
+// 앱 환경설정 (Lv.1 LocalStorage 저장용)
+export interface AppSettings {
+  nickname: string;
+  camperTitle: string;
+  defaultSearchRadiusKm: 5 | 10 | 15;
+  enableKeroseneToast: boolean;
+}
+
+export const DEFAULT_APP_SETTINGS: AppSettings = {
+  nickname: '에이드캠퍼',
+  camperTitle: '프로 동계 캠퍼',
+  defaultSearchRadiusKm: 10,
+  enableKeroseneToast: true,
+};

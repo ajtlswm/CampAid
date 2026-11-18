@@ -1,9 +1,14 @@
-import { useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import type { CampingChecklist, KeroseneStation } from '../types';
 import ProgressBar from '../components/ui/ProgressBar';
 import AdBanner from '../components/ads/AdBanner';
-import { estimateCampingClimate, formatStayDuration } from '../data/campsitePresets';
-import { getDistanceKm, getStationsAroundLocation } from '../services/opinetApi';
+import { formatStayDuration } from '../data/campsitePresets';
+import { useCampingWeather } from '../hooks/useCampingWeather';
+import {
+  fetchKeroseneStations,
+  getDistanceKm,
+  getStationsAroundLocation,
+} from '../services/opinetApi';
 
 interface HomePageProps {
   checklist: CampingChecklist;
@@ -29,31 +34,111 @@ export default function HomePage({
   const uncheckedItems = checklist.items.filter((i) => !i.is_checked);
   const hasDestination = Boolean(checklist.destination_name);
   const hasDate = Boolean(checklist.target_date);
-  const destLat = checklist.destination_lat ?? 37.5665;
-  const destLng = checklist.destination_lng ?? 126.978;
 
-  // 목적지 캠핑장이 선택되어 있을 때 해당 캠핑장 주변 주유소 동기화 및 최저가 매칭
-  const matchedStation = useMemo(() => {
-    if (!hasSchedule || !hasDestination || !checklist.destination_lat) {
-      return [...stations].sort((a, b) => a.kerosene_price - b.kerosene_price)[0];
+  const [kakaoReady, setKakaoReady] = useState(false);
+  const [geocodedPos, setGeocodedPos] = useState<{ lat: number; lng: number } | null>(null);
+  const destLat = hasDestination
+    ? geocodedPos?.lat ?? checklist.destination_lat ?? 37.5665
+    : 37.5665;
+  const destLng = hasDestination
+    ? geocodedPos?.lng ?? checklist.destination_lng ?? 126.978
+    : 126.978;
+
+  const [liveStations, setLiveStations] = useState<KeroseneStation[]>(() =>
+    hasSchedule && hasDestination
+      ? getStationsAroundLocation(destLat, destLng, checklist.destination_name)
+      : stations
+  );
+
+  // Kakao Maps SDK 로드 보장 (홈 화면에서도 실제 주유소/주소 매칭이 동일하게 동작하도록)
+  useEffect(() => {
+    const appKey = import.meta.env.VITE_KAKAO_MAP_APP_KEY;
+    if (!appKey) return;
+
+    if (window.kakao && window.kakao.maps) {
+      window.kakao.maps.load(() => setKakaoReady(true));
+      return;
     }
-    const localPool = getStationsAroundLocation(
-      destLat,
-      destLng,
-      checklist.destination_name
-    );
-    return [...localPool].sort((a, b) => a.kerosene_price - b.kerosene_price)[0];
-  }, [
-    stations,
-    hasSchedule,
-    hasDestination,
-    checklist.destination_lat,
-    checklist.destination_name,
-    destLat,
-    destLng,
-  ]);
 
-  // D-Day 계산
+    const existing = document.getElementById('kakao-map-sdk') as HTMLScriptElement | null;
+    if (existing) {
+      existing.addEventListener('load', () => {
+        if (window.kakao && window.kakao.maps) {
+          window.kakao.maps.load(() => setKakaoReady(true));
+        }
+      });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = 'kakao-map-sdk';
+    script.src = `https://dapi.kakao.com/v2/maps/sdk.js?appkey=${appKey}&libraries=services&autoload=false`;
+    script.async = true;
+    script.onload = () => {
+      if (window.kakao && window.kakao.maps) {
+        window.kakao.maps.load(() => setKakaoReady(true));
+      }
+    };
+    document.head.appendChild(script);
+  }, []);
+
+  // 등유지도(MapPage)와 동일하게 목적지 도로명/지번 주소 정밀 좌표 보정
+  useEffect(() => {
+    setGeocodedPos(null);
+    if (!kakaoReady || !hasSchedule || !hasDestination || !window.kakao?.maps?.services) return;
+    const rawAddr = (checklist.destination_address || '').replace(/\([^)]*\)/g, '').trim();
+    if (!rawAddr || rawAddr === '사용자 지정 캠핑장') return;
+
+    const geocoder = new window.kakao.maps.services.Geocoder();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    geocoder.addressSearch(rawAddr, (result: any[], status: string) => {
+      if (status === window.kakao.maps.services.Status.OK && result && result[0]) {
+        const exactLat = Number(result[0].y);
+        const exactLng = Number(result[0].x);
+        if (!Number.isNaN(exactLat) && !Number.isNaN(exactLng)) {
+          setGeocodedPos({ lat: exactLat, lng: exactLng });
+        }
+      }
+    });
+  }, [kakaoReady, hasSchedule, hasDestination, checklist.destination_address]);
+
+  // 등유지도(MapPage)와 동일한 fetchKeroseneStations 호출로 실시간 주유소 목록 동기화
+  useEffect(() => {
+    let cancelled = false;
+    async function syncHomeStations() {
+      if (!hasSchedule || !hasDestination) {
+        setLiveStations(stations);
+        return;
+      }
+      const res = await fetchKeroseneStations(
+        destLat,
+        destLng,
+        5000,
+        checklist.destination_name
+      );
+      if (!cancelled && res.stations.length > 0) {
+        setLiveStations(res.stations);
+      }
+    }
+    syncHomeStations();
+    return () => {
+      cancelled = true;
+    };
+  }, [hasSchedule, hasDestination, destLat, destLng, checklist.destination_name, stations, kakaoReady]);
+
+  // 등유지도와 동일하게 1순위: 최저가순, 2순위(동일 가격 시): 최단거리순 정렬 후 1위 주유소 선택
+  const matchedStation = useMemo(() => {
+    const sorted = [...liveStations].sort((a, b) => {
+      const priceDiff = a.kerosene_price - b.kerosene_price;
+      if (priceDiff !== 0) return priceDiff;
+      const distA = getDistanceKm(destLat, destLng, a.latitude, a.longitude);
+      const distB = getDistanceKm(destLat, destLng, b.latitude, b.longitude);
+      return distA - distB;
+    });
+    return sorted[0];
+  }, [liveStations, destLat, destLng]);
+
+  // D-Day 계산 (방안 1-A: 간결한 D-Day 표기)
   const dDayLabel = useMemo(() => {
     if (!hasDate) return '날짜 미정';
     const target = new Date(checklist.target_date);
@@ -61,19 +146,16 @@ export default function HomePage({
     now.setHours(0, 0, 0, 0);
     target.setHours(0, 0, 0, 0);
     const diffDays = Math.round((target.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-    if (diffDays > 0) return `D-${diffDays} to Camping`;
-    if (diffDays === 0) return 'D-Day Camping!';
-    return `D+${Math.abs(diffDays)} 지난 일정`;
+    if (diffDays > 0) return `D-${diffDays}`;
+    if (diffDays === 0) return 'D-Day!';
+    return `D+${Math.abs(diffDays)}`;
   }, [hasDate, checklist.target_date]);
 
-  // 설정된 날짜(또는 오늘 날짜) 기준 예상 최저기온
-  const climate = useMemo(
-    () =>
-      estimateCampingClimate(
-        hasDate ? checklist.target_date : new Date().toISOString().slice(0, 10),
-        hasDestination ? destLat : 37.5665
-      ),
-    [hasDate, hasDestination, checklist.target_date, destLat]
+  // 설정된 날짜(또는 오늘 날짜) 및 목적지 좌표 기준 실시간 기상 예보 연동 (16일 이후는 월별 기온 폴백)
+  const climate = useCampingWeather(
+    hasDate ? checklist.target_date : undefined,
+    hasDestination ? destLat : 37.5665,
+    hasDestination ? destLng : 126.978
   );
   const isSubZero = climate.minTemp < 0;
   const stayDuration = hasDate
@@ -85,29 +167,29 @@ export default function HomePage({
       {/* 1.2 개인화 캠핑 대시보드 (일정 있을 때 vs 일정 없을 때 분기) */}
       {hasSchedule ? (
         <section className="bg-surface rounded-2xl p-4 shadow-sm border border-gray-200/60">
-          <div className="flex items-center justify-between mb-2">
-            <div className="flex items-center gap-1.5">
-              <span className="inline-flex items-center gap-1 bg-aid-red text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-sm">
+          <div className="flex items-center justify-between gap-2 mb-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="inline-flex items-center gap-1 bg-aid-red text-white text-xs font-bold px-2.5 py-1 rounded-full shadow-sm whitespace-nowrap shrink-0">
                 🗓️ {dDayLabel}
               </span>
               {hasDate && (
-                <span className="text-[11px] font-bold text-forest bg-forest/10 px-2 py-0.5 rounded-full">
+                <span className="text-[11px] font-bold text-forest bg-forest/10 px-2.5 py-1 rounded-full whitespace-nowrap shrink-0">
                   {stayDuration}
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex items-center gap-1.5 shrink-0">
               <button
                 onClick={onOpenTripSetup}
-                className="text-xs font-bold text-forest bg-white hover:bg-forest hover:text-white border border-forest/30 px-2.5 py-1 rounded-xl shadow-2xs transition-colors flex items-center gap-1"
+                className="text-xs font-bold text-forest bg-white hover:bg-forest hover:text-white border border-forest/30 px-2.5 py-1 rounded-xl shadow-2xs transition-colors flex items-center gap-1 whitespace-nowrap shrink-0"
               >
                 <span>✏️</span>
-                <span>일정변경</span>
+                <span>변경</span>
               </button>
               <button
                 onClick={() => onClearSchedule()}
                 title="일정 비우기 (일정 없음 모드로 전환)"
-                className="text-[11px] font-bold text-gray-400 hover:text-aid-red bg-white border border-gray-200 px-2 py-1 rounded-xl transition-colors"
+                className="text-[11px] font-bold text-gray-400 hover:text-aid-red bg-white border border-gray-200 px-2.5 py-1 rounded-xl transition-colors whitespace-nowrap shrink-0"
               >
                 비우기
               </button>
@@ -135,22 +217,30 @@ export default function HomePage({
             </div>
 
             <div className="text-right bg-white px-3.5 py-2 rounded-2xl shadow-sm border border-gray-100 shrink-0">
-              <p className="text-[11px] text-gray-400 font-medium">
-                {climate.seasonLabel} 최저
+              <p className="text-[10px] text-gray-400 font-semibold whitespace-nowrap">
+                {climate.isRealtime
+                  ? `🟢 실시간 예보 (${climate.weatherDesc})`
+                  : `${climate.seasonLabel} 최저`}
               </p>
               <p
-                className={`text-xl font-extrabold tracking-tight ${
+                className={`text-xl font-extrabold tracking-tight whitespace-nowrap ${
                   isSubZero ? 'text-aid-red' : 'text-gray-900'
                 }`}
               >
-                {climate.minTemp}℃ {climate.weatherIcon}
+                {climate.minTemp}℃
+                {climate.maxTemp !== undefined ? (
+                  <span className="text-xs font-bold text-gray-400 ml-0.5">
+                    / {climate.maxTemp}℃
+                  </span>
+                ) : null}{' '}
+                {climate.weatherIcon}
               </p>
               {isSubZero ? (
-                <span className="text-[10px] font-bold text-aid-red">
+                <span className="text-[10px] font-bold text-aid-red whitespace-nowrap">
                   영하 동계 난방 필수!
                 </span>
               ) : (
-                <span className="text-[10px] font-bold text-forest">
+                <span className="text-[10px] font-bold text-forest whitespace-nowrap">
                   일교차 대비 요망
                 </span>
               )}
@@ -295,7 +385,10 @@ export default function HomePage({
         )}
 
         <div className="mt-3 flex items-center justify-between text-xs text-forest font-bold">
-          <span>얇은 주유건 보유 주유소 {stations.filter((s) => s.has_thin_nozzle).length}곳 포함</span>
+          <span>
+            주변 등유 주유소 {liveStations.length}곳 (얇은 주유건{' '}
+            {liveStations.filter((s) => s.has_thin_nozzle).length}곳)
+          </span>
           <span>지도 열기 →</span>
         </div>
       </section>

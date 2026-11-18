@@ -15,11 +15,24 @@ export interface UpdateScheduleParams {
   resetChecks?: boolean;
 }
 
-export function useChecklist(onKeroseneDetected?: () => void) {
+export function useChecklist(
+  options?: {
+    enableKeroseneToast?: boolean;
+    nickname?: string;
+    onKeroseneDetected?: () => void;
+  }
+) {
+  const enableKeroseneToast = options?.enableKeroseneToast ?? true;
+  const nickname = options?.nickname?.trim() || '나';
+  const onKeroseneDetected = options?.onKeroseneDetected;
+
   const [checklist, setChecklist] = useLocalStorage<CampingChecklist>(
     'campaid_checklist',
     mockChecklist
   );
+  const [customDefaultItems, setCustomDefaultItems] = useLocalStorage<
+    ChecklistItem[] | null
+  >('campaid_custom_default_items', null);
   const [toastVisible, setToastVisible] = useState(false);
 
   // 이전 버전(cl_001) 기본 목록이 저장되어 있는 경우 신규 7개 카테고리 기본 목록(cl_002)으로 자동 업그레이드
@@ -48,18 +61,23 @@ export function useChecklist(onKeroseneDetected?: () => void) {
             const newChecked = !item.is_checked;
             if (
               newChecked &&
+              enableKeroseneToast &&
               KEROSENE_KEYWORDS.some((kw) => item.item_name.includes(kw))
             ) {
               setToastVisible(true);
               onKeroseneDetected?.();
             }
-            return { ...item, is_checked: newChecked, checked_by: newChecked ? '나' : undefined };
+            return {
+              ...item,
+              is_checked: newChecked,
+              checked_by: newChecked ? nickname : undefined,
+            };
           }),
         };
         return updated;
       });
     },
-    [setChecklist, onKeroseneDetected]
+    [setChecklist, enableKeroseneToast, nickname, onKeroseneDetected]
   );
 
   const addItem = useCallback(
@@ -113,6 +131,31 @@ export function useChecklist(onKeroseneDetected?: () => void) {
   }, [setChecklist]);
 
   const restoreDefaultItems = useCallback(() => {
+    const baseItems =
+      customDefaultItems && customDefaultItems.length > 0
+        ? customDefaultItems
+        : mockChecklist.items;
+    setChecklist((prev) => ({
+      ...prev,
+      items: baseItems.map((item) => ({
+        ...item,
+        is_checked: false,
+        checked_by: undefined,
+      })),
+    }));
+  }, [setChecklist, customDefaultItems]);
+
+  const saveCurrentAsDefault = useCallback(() => {
+    const snapshot = checklist.items.map((item) => ({
+      ...item,
+      is_checked: false,
+      checked_by: undefined,
+    }));
+    setCustomDefaultItems(snapshot);
+  }, [checklist.items, setCustomDefaultItems]);
+
+  const clearCustomDefault = useCallback(() => {
+    setCustomDefaultItems(null);
     setChecklist((prev) => ({
       ...prev,
       items: mockChecklist.items.map((item) => ({
@@ -121,7 +164,7 @@ export function useChecklist(onKeroseneDetected?: () => void) {
         checked_by: undefined,
       })),
     }));
-  }, [setChecklist]);
+  }, [setCustomDefaultItems, setChecklist]);
 
   const updateSchedule = useCallback(
     (params: UpdateScheduleParams) => {
@@ -177,6 +220,7 @@ export function useChecklist(onKeroseneDetected?: () => void) {
 
   return {
     checklist,
+    setChecklist,
     hasSchedule,
     toggleItem,
     addItem,
@@ -184,6 +228,10 @@ export function useChecklist(onKeroseneDetected?: () => void) {
     deleteItem,
     resetAllChecks,
     restoreDefaultItems,
+    customDefaultItems,
+    hasCustomDefault: Boolean(customDefaultItems && customDefaultItems.length > 0),
+    saveCurrentAsDefault,
+    clearCustomDefault,
     updateSchedule,
     clearSchedule,
     progress,

@@ -3,6 +3,7 @@ import AppHeader from './components/layout/AppHeader';
 import BottomNav from './components/layout/BottomNav';
 import Toast from './components/ui/Toast';
 import TripSetupModal from './components/modals/TripSetupModal';
+import SettingsModal from './components/modals/SettingsModal';
 import HomePage from './pages/HomePage';
 import ChecklistPage from './pages/ChecklistPage';
 import MapPage from './pages/MapPage';
@@ -11,16 +12,25 @@ import { useChecklist } from './hooks/useChecklist';
 import { useLocalStorage } from './hooks/useLocalStorage';
 import { mockStations } from './data/mockStations';
 import { mockGear } from './data/mockGear';
-import type { UserGear } from './types';
+import { mockChecklist } from './data/mockChecklist';
+import type { UserGear, AppSettings, CampingChecklist } from './types';
+import { DEFAULT_APP_SETTINGS } from './types';
 
 type Tab = 'home' | 'checklist' | 'map' | 'gear';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<Tab>('home');
   const [showTripSetupModal, setShowTripSetupModal] = useState(false);
+  const [showSettingsModal, setShowSettingsModal] = useState(false);
+
+  const [settings, setSettings] = useLocalStorage<AppSettings>(
+    'campaid_settings',
+    DEFAULT_APP_SETTINGS
+  );
 
   const {
     checklist,
+    setChecklist,
     hasSchedule,
     toggleItem,
     addItem,
@@ -28,12 +38,19 @@ export default function App() {
     deleteItem,
     resetAllChecks,
     restoreDefaultItems,
+    customDefaultItems,
+    hasCustomDefault,
+    saveCurrentAsDefault,
+    clearCustomDefault,
     updateSchedule,
     clearSchedule,
     progress,
     toastVisible,
     dismissToast,
-  } = useChecklist();
+  } = useChecklist({
+    enableKeroseneToast: settings.enableKeroseneToast,
+    nickname: settings.nickname,
+  });
 
   const [userGear, setUserGear] = useLocalStorage<UserGear[]>('campaid_user_gear', mockGear);
 
@@ -60,9 +77,35 @@ export default function App() {
     setUserGear((prev) => prev.filter((g) => g.gear_id !== gearId));
   };
 
+  const handleRestoreBackup = (data: {
+    checklist?: CampingChecklist;
+    userGear?: UserGear[];
+    settings?: AppSettings;
+  }) => {
+    if (data.checklist) {
+      setChecklist(data.checklist);
+    }
+    if (Array.isArray(data.userGear)) {
+      setUserGear(data.userGear);
+    }
+    if (data.settings) {
+      setSettings(data.settings);
+    }
+  };
+
+  const handleFactoryReset = () => {
+    setChecklist(mockChecklist);
+    setUserGear(mockGear);
+    setSettings(DEFAULT_APP_SETTINGS);
+    clearCustomDefault();
+  };
+
   return (
     <div className="min-h-screen bg-[#F8F9FA] text-[#111827]">
-      <AppHeader onOpenTripSetup={() => setShowTripSetupModal(true)} />
+      <AppHeader
+        onOpenTripSetup={() => setShowTripSetupModal(true)}
+        onOpenSettings={() => setShowSettingsModal(true)}
+      />
 
       <main>
         {activeTab === 'home' && (
@@ -102,6 +145,7 @@ export default function App() {
             destinationAddress={checklist.destination_address}
             destinationLat={checklist.destination_lat}
             destinationLng={checklist.destination_lng}
+            defaultSearchRadiusKm={settings.defaultSearchRadiusKm}
             onOpenTripSetup={() => setShowTripSetupModal(true)}
           />
         )}
@@ -109,6 +153,8 @@ export default function App() {
         {activeTab === 'gear' && (
           <GearPage
             gearList={userGear}
+            nickname={settings.nickname}
+            camperTitle={settings.camperTitle}
             onAddGear={handleAddGear}
             onUpdateGear={handleUpdateGear}
             onDeleteGear={handleDeleteGear}
@@ -124,6 +170,24 @@ export default function App() {
         onClose={() => setShowTripSetupModal(false)}
         onSave={updateSchedule}
         onClearSchedule={clearSchedule}
+      />
+
+      {/* 앱 환경설정 & 데이터 관리 모달 */}
+      <SettingsModal
+        visible={showSettingsModal}
+        settings={settings}
+        checklist={checklist}
+        userGear={userGear}
+        hasCustomDefault={hasCustomDefault}
+        customDefaultCount={customDefaultItems?.length ?? 0}
+        onClose={() => setShowSettingsModal(false)}
+        onUpdateSettings={setSettings}
+        onSaveCurrentAsDefault={saveCurrentAsDefault}
+        onClearCustomDefault={clearCustomDefault}
+        onRestoreDefaultChecklist={restoreDefaultItems}
+        onRestoreBackup={handleRestoreBackup}
+        onFactoryReset={handleFactoryReset}
+        onResetGear={() => setUserGear(mockGear)}
       />
 
       {/* §5.3 유기적 UX 인터랙션: 난로/등유통 체크 시 4초간 스낵바 노출 */}

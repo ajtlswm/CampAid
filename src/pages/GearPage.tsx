@@ -4,6 +4,8 @@ import { CATEGORY_LABELS, SEASON_LABELS } from '../types';
 
 interface GearPageProps {
   gearList: UserGear[];
+  nickname?: string;
+  camperTitle?: string;
   onAddGear: (gear: Omit<UserGear, 'gear_id' | 'user_id' | 'created_at'>) => void;
   onUpdateGear: (
     gearId: string,
@@ -26,6 +28,8 @@ const ALL_SEASONS: SeasonTag[] = ['SPRING', 'SUMMER', 'AUTUMN', 'WINTER'];
 
 export default function GearPage({
   gearList,
+  nickname = '에이드캠퍼',
+  camperTitle = '프로 동계 캠퍼',
   onAddGear,
   onUpdateGear,
   onDeleteGear,
@@ -113,8 +117,8 @@ export default function GearPage({
               ⛺
             </div>
             <div>
-              <p className="text-xs text-white/75">프로 동계 캠퍼</p>
-              <h2 className="text-base font-bold">에이드캠퍼님의 장비고</h2>
+              <p className="text-xs text-white/75">{camperTitle}</p>
+              <h2 className="text-base font-bold">{nickname}님의 장비고</h2>
             </div>
           </div>
           <span className="bg-white/15 text-xs font-bold px-3 py-1 rounded-full">

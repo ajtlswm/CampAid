@@ -14,6 +14,7 @@ interface MapPageProps {
   destinationAddress?: string;
   destinationLat?: number;
   destinationLng?: number;
+  defaultSearchRadiusKm?: 5 | 10 | 15;
   onOpenTripSetup: () => void;
 }
 
@@ -76,6 +77,7 @@ export default function MapPage({
   destinationAddress,
   destinationLat,
   destinationLng,
+  defaultSearchRadiusKm = 10,
   onOpenTripSetup,
 }: MapPageProps) {
   const hasDestination = Boolean(hasSchedule && destinationName);
@@ -151,6 +153,46 @@ export default function MapPage({
     }, 80);
   };
 
+  // 캠핑장(또는 기준 좌표)과 주변 주유소 마커들이 한 화면에 모두 들어오도록 지도 범위(Bounds) 자동 맞춤
+  const fitMapToCenterAndStations = (
+    centerLat: number,
+    centerLng: number,
+    stationList: KeroseneStation[]
+  ) => {
+    if (!mapInstanceRef.current || !kakaoReady || !window.kakao?.maps) return;
+    try {
+      mapInstanceRef.current.relayout();
+      if (stationList.length === 0) {
+        mapInstanceRef.current.setCenter(new window.kakao.maps.LatLng(centerLat, centerLng));
+        mapInstanceRef.current.setLevel(7);
+        return;
+      }
+
+      const bounds = new window.kakao.maps.LatLngBounds();
+      bounds.extend(new window.kakao.maps.LatLng(centerLat, centerLng));
+
+      // 1순위(최저가·최단거리) 주유소 + 기준점에서 가장 가까운 주유소 3곳을 함께 화면에 포함
+      const nearestThree = [...stationList]
+        .sort(
+          (a, b) =>
+            getDistanceKm(centerLat, centerLng, a.latitude, a.longitude) -
+            getDistanceKm(centerLat, centerLng, b.latitude, b.longitude)
+        )
+        .slice(0, 3);
+
+      const targets = [stationList[0], ...nearestThree];
+      targets.forEach((st) => {
+        if (st) {
+          bounds.extend(new window.kakao.maps.LatLng(st.latitude, st.longitude));
+        }
+      });
+
+      mapInstanceRef.current.setBounds(bounds);
+    } catch {
+      // ignore bounds error
+    }
+  };
+
   // 목적지 캠핑장이 변경될 때마다 자동으로 해당 위도/경도 주변 등유 주유소 동기화!
   useEffect(() => {
     let cancelled = false;
@@ -159,33 +201,49 @@ export default function MapPage({
 
     async function syncDestinationStations() {
       if (!hasDestination) {
-        setStations(initialStations);
         const sorted = sortStationsByPriceAndDistance(initialStations, activeLat, activeLng);
+        setStations(sorted);
         setSelectedStation(sorted[0] ?? null);
+        fitMapToCenterAndStations(activeLat, activeLng, sorted);
         return;
       }
 
       setIsLoading(true);
-      const res = await fetchKeroseneStations(activeLat, activeLng, 5000, destinationName);
+      const res = await fetchKeroseneStations(
+        activeLat,
+        activeLng,
+        defaultSearchRadiusKm * 1000,
+        destinationName
+      );
       if (cancelled) return;
-      setStations(res.stations);
-      setDataSource(res.source);
       const sorted = sortStationsByPriceAndDistance(res.stations, activeLat, activeLng);
+      setStations(sorted);
+      setDataSource(res.source);
       setSelectedStation(sorted[0] ?? null);
       setIsLoading(false);
 
-      if (mapInstanceRef.current && kakaoReady && window.kakao?.maps) {
-        const moveLatLon = new window.kakao.maps.LatLng(activeLat, activeLng);
-        mapInstanceRef.current.setCenter(moveLatLon);
-        mapInstanceRef.current.setLevel(6);
-      }
+      // 처음 지도가 뜰 때 캠핑장 핀(⛺)과 주변 주유소 가격 핀들이 한 화면에 같이 보이도록 범위 조정
+      setTimeout(() => {
+        if (!cancelled) {
+          fitMapToCenterAndStations(activeLat, activeLng, sorted);
+        }
+      }, 60);
     }
 
     syncDestinationStations();
     return () => {
       cancelled = true;
     };
-  }, [hasDestination, destinationName, activeLat, activeLng, initialStations, kakaoReady]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    hasDestination,
+    destinationName,
+    activeLat,
+    activeLng,
+    initialStations,
+    kakaoReady,
+    defaultSearchRadiusKm,
+  ]);
 
   // 필터링 및 정렬된 주유소 목록 (동일 가격 시 거리순)
   const filteredStations = useMemo(() => {
@@ -415,7 +473,12 @@ export default function MapPage({
   // 지정 좌표 기준 주유소 검색 및 지도 범위 자동 보정
   const executeStationSearch = async (lat: number, lng: number, label: string) => {
     setIsLoading(true);
-    const result = await fetchKeroseneStations(lat, lng, 10000, label);
+    const result = await fetchKeroseneStations(
+      lat,
+      lng,
+      defaultSearchRadiusKm * 1000,
+      label
+    );
     setStations(result.stations);
     setDataSource(result.source);
 
@@ -478,7 +541,7 @@ export default function MapPage({
     await executeStationSearch(lat, lng, '현재 지도 중심');
   };
 
-  // 목적지 캠핑장 위치로 지도 중심 즉시 이동
+  // 목적지 캠핑장 위치 및 주변 주유소가 함께 보이도록 지도 중심 이동
   const handleFocusDestination = () => {
     if (!hasDestination) {
       onOpenTripSetup();
@@ -486,31 +549,48 @@ export default function MapPage({
     }
     setSearchMode('ROUTE');
     setCurrentMapCenter({ lat: activeLat, lng: activeLng });
-    if (mapInstanceRef.current && kakaoReady && window.kakao?.maps) {
-      mapInstanceRef.current.panTo(new window.kakao.maps.LatLng(activeLat, activeLng));
-    }
+    fitMapToCenterAndStations(activeLat, activeLng, filteredStations);
   };
 
-  // §5.2 외부 내비게이션 앱 연동 (URL Scheme + 웹 폴백)
+  // §5.2 외부 내비게이션 앱 연동 (티맵과 카카오내비 완전 분리)
   const handleStartNavigation = (provider: 'KAKAO' | 'TMAP', station: KeroseneStation) => {
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
-    const encodedName = encodeURIComponent(station.station_name);
-    const webFallbackUrl = `https://map.kakao.com/link/to/${encodedName},${station.latitude},${station.longitude}`;
+    const cleanName = getCleanStationName(station.station_name);
+    const encodedName = encodeURIComponent(cleanName);
 
-    if (!isMobile) {
-      window.open(webFallbackUrl, '_blank', 'noopener,noreferrer');
+    if (provider === 'TMAP') {
+      const tmapSchemeUrl = `tmap://route?goalname=${encodedName}&goalx=${station.longitude}&goaly=${station.latitude}`;
+      if (isMobile) {
+        // 모바일에서는 티맵 앱 스킴만 단독 호출 (카카오맵 웹 폴백이 같이 열리는 현상 제거)
+        window.location.href = tmapSchemeUrl;
+      } else {
+        // PC 브라우저에서는 티맵 안내 또는 네이버/카카오가 아닌 티맵 스토어/웹 안내
+        window.location.href = tmapSchemeUrl;
+      }
       return;
     }
 
-    const schemeUrl =
-      provider === 'KAKAO'
-        ? `kakaonavi://search?q=${encodedName}&epX=${station.longitude}&epY=${station.latitude}`
-        : `tmap://route?goalname=${encodedName}&goalx=${station.longitude}&goaly=${station.latitude}`;
+    // KAKAO 내비게이션
+    const kakaoWebUrl = `https://map.kakao.com/link/to/${encodedName},${station.latitude},${station.longitude}`;
+    if (!isMobile) {
+      window.open(kakaoWebUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
 
-    window.location.href = schemeUrl;
+    let appOpened = false;
+    const onBlur = () => {
+      appOpened = true;
+    };
+    window.addEventListener('blur', onBlur, { once: true });
+
+    window.location.href = `kakaonavi://navigate?name=${encodedName}&x=${station.longitude}&y=${station.latitude}&coord_type=wgs84`;
+
     setTimeout(() => {
-      window.open(webFallbackUrl, '_blank', 'noopener,noreferrer');
-    }, 1500);
+      window.removeEventListener('blur', onBlur);
+      if (!appOpened && document.visibilityState === 'visible') {
+        window.open(kakaoWebUrl, '_blank', 'noopener,noreferrer');
+      }
+    }, 2200);
   };
 
   return (
