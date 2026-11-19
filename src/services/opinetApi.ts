@@ -193,27 +193,29 @@ export function getStationsAroundLocation(
       station_id: `LOC_${centerLat.toFixed(3)}_1`,
       station_name: `${shortArea} 알뜰주유소`,
       brand_code: 'RTO',
-      kerosene_price: 1275,
+      kerosene_price: 0,
+      is_price_unverified: true,
       latitude: Number((centerLat - 0.014).toFixed(6)),
       longitude: Number((centerLng - 0.011).toFixed(6)),
       address: `${areaLabel} 진입로 약 1.8km 지점`,
       tel_number: '031-835-1001',
       is_24_hours: false,
-      has_thin_nozzle: true,
-      review_summary: '캠핑장 들어가기 직전 마지막 알뜰주유소! 얇은 주유건 보유 ✅',
+      has_thin_nozzle: false,
+      review_summary: '⚠️ 실내등유 취급 여부 미확인 주유소입니다. 방문 전 전화로 확인하세요.',
     },
     {
       station_id: `LOC_${centerLat.toFixed(3)}_2`,
       station_name: `${shortArea}농협주유소`,
       brand_code: 'ETC',
-      kerosene_price: 1265,
+      kerosene_price: 0,
+      is_price_unverified: true,
       latitude: Number((centerLat + 0.012).toFixed(6)),
       longitude: Number((centerLng - 0.018).toFixed(6)),
-      address: `${areaLabel} 인근 농협 정품 등유 판매소`,
+      address: `${areaLabel} 인근 농협 주유소`,
       tel_number: '031-835-2488',
       is_24_hours: false,
-      has_thin_nozzle: true,
-      review_summary: '정품 실내등유 최저가! 동계 캠퍼들 성지 🔥',
+      has_thin_nozzle: false,
+      review_summary: '⚠️ 실내등유 취급 여부 미확인 주유소입니다. 방문 전 전화로 확인하세요.',
     },
   ];
 }
@@ -235,14 +237,6 @@ export function searchRealGasStationsByKakao(
 
     const places = new window.kakao.maps.services.Places();
     const center = new window.kakao.maps.LatLng(centerLat, centerLng);
-
-    const TIPS = [
-      '동계 캠퍼 방문 다수 · 실내등유 판매 및 말통 주유 가능 ✅',
-      '말통/제리캔 주유 친절 응대 · 캠핑장 진입 전 주유 추천 👍',
-      '정품 실내등유 취급 · 팬히터/난로용 등유 주유 가능 🔥',
-      '국도변 위치로 캠핑장 들어가기 전 들르기 편리함 🚗',
-      '주변 캠퍼들이 자주 이용하는 등유 취급 주유소 ✅',
-    ];
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const collectedRaw: any[] = [];
@@ -284,26 +278,19 @@ export function searchRealGasStationsByKakao(
 
         const rawName = String(p.place_name || '주유소').trim();
 
-        const idNum =
-          String(p.id || rawName)
-            .split('')
-            .reduce((acc, ch) => acc + ch.charCodeAt(0), 0) || 100;
-
-        const basePrice = brand === 'RTO' ? 1250 : 1280;
-        const price = basePrice + (idNum % 9) * 10;
-
         return {
           station_id: `KAKAO_${p.id}`,
           station_name: rawName,
           brand_code: brand,
-          kerosene_price: price,
+          kerosene_price: 0, // 가상 가격을 부여하지 않고 0(미확인)으로 명시
+          is_price_unverified: true,
           latitude: Number(p.y),
           longitude: Number(p.x),
           address: p.road_address_name || p.address_name || '도로명 주소 정보 없음',
           tel_number: p.phone || undefined,
-          is_24_hours: idNum % 3 === 0,
-          has_thin_nozzle: idNum % 3 !== 1,
-          review_summary: TIPS[idNum % TIPS.length],
+          is_24_hours: false,
+          has_thin_nozzle: false,
+          review_summary: '⚠️ 등유 판매 여부 미확인 주유소 (방문 전 전화 확인 필수 📞)',
         };
       });
     };
@@ -456,6 +443,7 @@ export async function fetchKeroseneStations(
         station_name: matchedKakao ? matchedKakao.station_name : item.OS_NM || '주유소',
         brand_code: brand,
         kerosene_price: Number(item.PRICE) || 1350,
+        is_price_unverified: false,
         latitude: finalLat,
         longitude: finalLng,
         address: matchedKakao

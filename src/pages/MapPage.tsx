@@ -55,15 +55,23 @@ function getCleanStationName(name: string): string {
   return cleaned || name;
 }
 
-/** 1순위: 최저가순, 2순위(동일 가격일 때): 기준 좌표에서 거리가 가까운 순 정렬 */
+/** 1순위: 가격 검증된 주유소 우선, 2순위: 최저가순, 3순위: 기준 좌표에서 거리가 가까운 순 정렬 */
 function sortStationsByPriceAndDistance(
   list: KeroseneStation[],
   baseLat: number,
   baseLng: number
 ): KeroseneStation[] {
   return [...list].sort((a, b) => {
-    const priceDiff = a.kerosene_price - b.kerosene_price;
-    if (priceDiff !== 0) return priceDiff;
+    const validA = !a.is_price_unverified && a.kerosene_price > 0;
+    const validB = !b.is_price_unverified && b.kerosene_price > 0;
+    if (validA && !validB) return -1;
+    if (!validA && validB) return 1;
+
+    if (validA && validB) {
+      const priceDiff = a.kerosene_price - b.kerosene_price;
+      if (priceDiff !== 0) return priceDiff;
+    }
+
     const distA = getDistanceKm(baseLat, baseLng, a.latitude, a.longitude);
     const distB = getDistanceKm(baseLat, baseLng, b.latitude, b.longitude);
     return distA - distB;
@@ -293,8 +301,11 @@ export default function MapPage({
   ]);
 
   const lowestPrice = useMemo(() => {
-    if (filteredStations.length === 0) return 0;
-    return Math.min(...filteredStations.map((s) => s.kerosene_price));
+    const validPrices = filteredStations
+      .filter((s) => !s.is_price_unverified && s.kerosene_price > 0)
+      .map((s) => s.kerosene_price);
+    if (validPrices.length === 0) return 0;
+    return Math.min(...validPrices);
   }, [filteredStations]);
 
   // Kakao Maps SDK 동적 로드
@@ -422,12 +433,32 @@ export default function MapPage({
 
       // 2) 등유 주유소 가격 커스텀 마커 렌더링 (현재 선택된 주유소는 선명한 로얄블루 #2563EB + 후광 링으로 강조)
       filteredStations.forEach((st) => {
-        const isLowest = st.kerosene_price === lowestPrice;
+        const isUnverified = st.is_price_unverified || !st.kerosene_price;
+        const isLowest = !isUnverified && lowestPrice > 0 && st.kerosene_price === lowestPrice;
         const isSelected = selectedStation?.station_id === st.station_id;
 
-        const bgColor = isSelected ? '#2563EB' : isLowest ? '#FF4D4D' : '#FFFFFF';
-        const textColor = isSelected || isLowest ? '#FFFFFF' : '#111827';
-        const borderColor = isSelected ? '#FFFFFF' : isLowest ? '#E63946' : '#1E3F20';
+        let bgColor = '#FFFFFF';
+        let textColor = '#111827';
+        let borderColor = isSelected ? '#FFFFFF' : '#1E3F20';
+        let labelText = `${st.kerosene_price.toLocaleString()}원`;
+        let icon = isSelected ? '📍' : isLowest ? '🔥' : '⛽';
+
+        if (isUnverified) {
+          labelText = '등유 미확인';
+          icon = isSelected ? '📍' : '❓';
+          bgColor = isSelected ? '#4B5563' : '#F3F4F6';
+          textColor = isSelected ? '#FFFFFF' : '#4B5563';
+          borderColor = isSelected ? '#FFFFFF' : '#9CA3AF';
+        } else if (isSelected) {
+          bgColor = '#2563EB';
+          textColor = '#FFFFFF';
+          borderColor = '#FFFFFF';
+        } else if (isLowest) {
+          bgColor = '#FF4D4D';
+          textColor = '#FFFFFF';
+          borderColor = '#E63946';
+        }
+
         const boxShadow = isSelected
           ? '0 0 0 4px rgba(37, 99, 235, 0.38), 0 6px 14px rgba(0,0,0,0.3)'
           : '0 4px 10px rgba(0,0,0,0.18)';
@@ -452,8 +483,8 @@ export default function MapPage({
               gap: 4px;
               transition: all 0.15s ease;
             ">
-              <span>${isSelected ? '📍' : isLowest ? '🔥' : '⛽'}</span>
-              <span>${st.kerosene_price.toLocaleString()}원</span>
+              <span>${icon}</span>
+              <span>${labelText}</span>
               ${isSelected ? '<span style="font-size:10px;opacity:0.95;">✓</span>' : ''}
             </div>
             ${
@@ -463,7 +494,7 @@ export default function MapPage({
                     height: 0;
                     border-left: 6px solid transparent;
                     border-right: 6px solid transparent;
-                    border-top: 7px solid #2563EB;
+                    border-top: 7px solid ${isUnverified ? '#4B5563' : '#2563EB'};
                     margin-top: -1px;
                   "></div>`
                 : ''
@@ -770,9 +801,14 @@ export default function MapPage({
           >
             🚗 얇은주유건 ({stations.filter((s) => s.has_thin_nozzle).length})
           </button>
-          <span className="ml-auto text-[10px] font-bold text-forest shrink-0 whitespace-nowrap">
-            🟢 반경 {defaultSearchRadiusKm}km ·{' '}
-            {dataSource === 'opinet' ? '오피넷 실시간' : '주변 매칭'}
+          <span
+            className={`ml-auto text-[10px] font-bold shrink-0 whitespace-nowrap px-2 py-0.5 rounded ${
+              dataSource === 'opinet'
+                ? 'text-forest bg-forest/10'
+                : 'text-amber-700 bg-amber-50 border border-amber-200'
+            }`}
+          >
+            {dataSource === 'opinet' ? '🟢 오피넷 실시간' : '⚠️ 등유 미확인 (전화 필수)'} · 반경 {defaultSearchRadiusKm}km
           </span>
         </div>
       </div>
@@ -824,7 +860,6 @@ export default function MapPage({
             )}
 
             {filteredStations.slice(0, 8).map((st, idx) => {
-              const isLowest = st.kerosene_price === lowestPrice;
               const isSelected = selectedStation?.station_id === st.station_id;
               const positions = [
                 { top: '26%', left: '32%' },
@@ -838,6 +873,9 @@ export default function MapPage({
               ];
               const pos = positions[idx % positions.length];
 
+              const isUnverified = st.is_price_unverified || !st.kerosene_price;
+              const isLowest = !isUnverified && lowestPrice > 0 && st.kerosene_price === lowestPrice;
+
               return (
                 <button
                   key={st.station_id}
@@ -849,14 +887,18 @@ export default function MapPage({
                   style={{ top: pos.top, left: pos.left }}
                   className={`absolute -translate-x-1/2 -translate-y-1/2 px-3 py-1.5 rounded-full font-extrabold text-xs shadow-md transition-transform flex items-center gap-1 border-2 ${
                     isSelected
-                      ? 'bg-[#2563EB] text-white border-white ring-4 ring-blue-500/35 scale-110 z-30'
+                      ? isUnverified
+                        ? 'bg-gray-700 text-white border-white ring-4 ring-gray-400/35 scale-110 z-30'
+                        : 'bg-[#2563EB] text-white border-white ring-4 ring-blue-500/35 scale-110 z-30'
+                      : isUnverified
+                      ? 'bg-gray-100 text-gray-600 border-gray-300 hover:scale-105 z-10'
                       : isLowest
                       ? 'bg-aid-red text-white border-white scale-105 z-20'
                       : 'bg-white text-gray-900 border-forest hover:scale-105 z-10'
                   }`}
                 >
-                  <span>{isSelected ? '📍' : isLowest ? '🔥' : '⛽'}</span>
-                  <span>{st.kerosene_price.toLocaleString()}원</span>
+                  <span>{isSelected ? '📍' : isUnverified ? '❓' : isLowest ? '🔥' : '⛽'}</span>
+                  <span>{isUnverified ? '등유 미확인' : `${st.kerosene_price.toLocaleString()}원`}</span>
                 </button>
               );
             })}
@@ -945,9 +987,15 @@ export default function MapPage({
               </div>
 
               <div className="flex items-center gap-2 shrink-0">
-                <span className="text-base font-extrabold text-aid-red">
-                  {selectedStation.kerosene_price.toLocaleString()}원
-                </span>
+                {selectedStation.is_price_unverified || !selectedStation.kerosene_price ? (
+                  <span className="text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-md border border-amber-200">
+                    등유 미확인
+                  </span>
+                ) : (
+                  <span className="text-base font-extrabold text-aid-red">
+                    {selectedStation.kerosene_price.toLocaleString()}원
+                  </span>
+                )}
                 <span className="text-[11px] font-bold text-forest bg-surface px-2.5 py-1 rounded-lg border border-gray-200">
                   {isCardExpanded ? '▼ 접기' : '▲ 상세 / 길찾기'}
                 </span>
@@ -960,11 +1008,13 @@ export default function MapPage({
                 <span className="text-[10px] font-bold bg-forest/10 text-forest px-2 py-0.5 rounded">
                   {BRAND_LABELS[selectedStation.brand_code]}
                 </span>
-                {selectedStation.kerosene_price === lowestPrice && (
-                  <span className="text-[10px] font-bold bg-aid-red text-white px-2 py-0.5 rounded">
-                    구역 최저가
-                  </span>
-                )}
+                {!selectedStation.is_price_unverified &&
+                  selectedStation.kerosene_price > 0 &&
+                  selectedStation.kerosene_price === lowestPrice && (
+                    <span className="text-[10px] font-bold bg-aid-red text-white px-2 py-0.5 rounded">
+                      구역 최저가
+                    </span>
+                  )}
                 {selectedStation.is_24_hours && (
                   <span className="text-[10px] font-bold bg-gray-100 text-gray-700 px-2 py-0.5 rounded">
                     24시 영업
@@ -976,13 +1026,30 @@ export default function MapPage({
                   </span>
                 )}
               </div>
-              <span className="text-[10px] text-gray-400">실내등유 1L 기준</span>
+              <span className="text-[10px] text-gray-400">
+                {selectedStation.is_price_unverified || !selectedStation.kerosene_price
+                  ? '⚠️ 방문 전 전화 확인 필수'
+                  : '실내등유 1L 기준'}
+              </span>
             </div>
           </div>
 
           {/* 펼쳐진 상태일 때만 상세 주소 · 주유소 칩 · 내비게이션 버튼 노출 */}
           {isCardExpanded && (
             <div className="px-4 pb-3 pt-2 space-y-2 border-t border-gray-100">
+              {/* 미검증 주유소 주의 경고 배너 */}
+              {(selectedStation.is_price_unverified || !selectedStation.kerosene_price) && (
+                <div className="bg-amber-50 border border-amber-200/90 rounded-xl p-2.5 text-xs text-amber-900 flex items-start gap-2">
+                  <span className="text-base shrink-0">⚠️</span>
+                  <div className="min-w-0">
+                    <p className="font-bold">실내등유 취급 여부 미확인 주유소</p>
+                    <p className="text-[11px] text-amber-800 mt-0.5 leading-snug">
+                      오피넷에 등유 판매 등록이 되지 않은 주유소입니다. 헛걸음하지 않도록 방문 전 반드시 전화로 등유 판매 여부를 확인하세요!
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <p className="text-xs text-gray-600 flex items-center gap-2 whitespace-nowrap truncate">
                 <span className="truncate">{selectedStation.address}</span>
                 {hasDestination && (
@@ -998,6 +1065,16 @@ export default function MapPage({
                   </span>
                 )}
               </p>
+
+              {selectedStation.tel_number && (
+                <a
+                  href={`tel:${selectedStation.tel_number}`}
+                  className="w-full bg-amber-100/70 hover:bg-amber-100 border border-amber-300 text-amber-900 font-bold text-xs py-2 rounded-xl flex items-center justify-center gap-1.5 transition-colors"
+                >
+                  <span>📞</span>
+                  <span>주유소 전화 문의하기 ({selectedStation.tel_number})</span>
+                </a>
+              )}
 
               {selectedStation.review_summary && (
                 <div className="bg-surface rounded-xl px-3 py-1.5 text-xs text-gray-700 flex items-center gap-2 whitespace-nowrap truncate">
@@ -1025,7 +1102,11 @@ export default function MapPage({
                         : 'bg-gray-50 text-gray-600 border-gray-200'
                     }`}
                   >
-                    {getCleanStationName(st.station_name)} ({st.kerosene_price.toLocaleString()}원)
+                    {getCleanStationName(st.station_name)} (
+                    {st.is_price_unverified || !st.kerosene_price
+                      ? '미확인'
+                      : `${st.kerosene_price.toLocaleString()}원`}
+                    )
                   </button>
                 ))}
               </div>

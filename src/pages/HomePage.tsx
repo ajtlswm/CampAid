@@ -133,11 +133,18 @@ export default function HomePage({
     defaultSearchRadiusKm,
   ]);
 
-  // 등유지도와 동일하게 1순위: 최저가순, 2순위(동일 가격 시): 최단거리순 정렬 후 1위 주유소 선택
+  // 등유지도와 동일하게 1순위: 가격 검증된 주유소 우선, 2순위: 최저가순, 3순위: 거리순 정렬 후 1위 주유소 선택
   const matchedStation = useMemo(() => {
     const sorted = [...liveStations].sort((a, b) => {
-      const priceDiff = a.kerosene_price - b.kerosene_price;
-      if (priceDiff !== 0) return priceDiff;
+      const validA = !a.is_price_unverified && a.kerosene_price > 0;
+      const validB = !b.is_price_unverified && b.kerosene_price > 0;
+      if (validA && !validB) return -1;
+      if (!validA && validB) return 1;
+
+      if (validA && validB) {
+        const priceDiff = a.kerosene_price - b.kerosene_price;
+        if (priceDiff !== 0) return priceDiff;
+      }
       const distA = getDistanceKm(destLat, destLng, a.latitude, a.longitude);
       const distB = getDistanceKm(destLat, destLng, b.latitude, b.longitude);
       return distA - distB;
@@ -379,14 +386,23 @@ export default function HomePage({
 
         {matchedStation && (
           <div className="bg-surface rounded-xl p-3 flex items-center justify-between">
-            <div>
-              <span className="text-[10px] font-bold text-aid-red uppercase">
-                🔥{' '}
-                {hasSchedule && hasDestination
-                  ? `${checklist.destination_name} 인근 최저가`
-                  : '수도권·강원 최저가 주유소'}
+            <div className="min-w-0 pr-2">
+              <span
+                className={`text-[10px] font-bold uppercase ${
+                  matchedStation.is_price_unverified || !matchedStation.kerosene_price
+                    ? 'text-amber-700 bg-amber-50 px-1.5 py-0.5 rounded border border-amber-200'
+                    : 'text-aid-red'
+                }`}
+              >
+                {matchedStation.is_price_unverified || !matchedStation.kerosene_price
+                  ? '⚠️ 등유 취급 확인 요망'
+                  : `🔥 ${
+                      hasSchedule && hasDestination
+                        ? `${checklist.destination_name} 인근 최저가`
+                        : '수도권·강원 최저가 주유소'
+                    }`}
               </span>
-              <p className="text-sm font-bold text-gray-900 mt-0.5">
+              <p className="text-sm font-bold text-gray-900 mt-0.5 truncate">
                 {matchedStation.station_name}
               </p>
               <p className="text-[11px] text-gray-500 truncate max-w-[210px]">
@@ -401,11 +417,24 @@ export default function HomePage({
                   : ''}
               </p>
             </div>
-            <div className="text-right">
-              <span className="text-xs text-gray-400 block">실내등유 1L</span>
-              <span className="text-lg font-extrabold text-aid-red">
-                {matchedStation.kerosene_price.toLocaleString()}원
-              </span>
+            <div className="text-right shrink-0">
+              {matchedStation.is_price_unverified || !matchedStation.kerosene_price ? (
+                <div>
+                  <span className="text-[11px] font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 block">
+                    등유 미확인
+                  </span>
+                  <span className="text-[10px] text-gray-400 mt-0.5 block">
+                    전화 문의 필요
+                  </span>
+                </div>
+              ) : (
+                <div>
+                  <span className="text-xs text-gray-400 block">실내등유 1L</span>
+                  <span className="text-lg font-extrabold text-aid-red">
+                    {matchedStation.kerosene_price.toLocaleString()}원
+                  </span>
+                </div>
+              )}
             </div>
           </div>
         )}

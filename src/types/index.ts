@@ -19,7 +19,8 @@ export interface KeroseneStation {
   station_id: string;
   station_name: string;
   brand_code: BrandCode;
-  kerosene_price: number;       // 실내등유 리터당 가격 (원)
+  kerosene_price: number;       // 실내등유 리터당 가격 (원, 미확인 주유소는 0)
+  is_price_unverified?: boolean; // 등유 취급 및 가격 미확인 여부 (카카오 일반 주유소 폴백 등)
   latitude: number;             // WGS84 위도
   longitude: number;            // WGS84 경도
   address: string;
