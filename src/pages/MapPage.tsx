@@ -230,20 +230,13 @@ export default function MapPage({
     setCurrentMapCenter({ lat: activeLat, lng: activeLng });
 
     async function syncDestinationStations() {
-      if (!hasDestination) {
-        const sorted = sortStationsByPriceAndDistance(initialStations, activeLat, activeLng);
-        setStations(sorted);
-        setSelectedStation(sorted[0] ?? null);
-        fitMapToCenterAndStations(activeLat, activeLng, sorted);
-        return;
-      }
-
       setIsLoading(true);
+      const label = hasDestination ? destinationName : '현재 지도 중심';
       const res = await fetchKeroseneStations(
         activeLat,
         activeLng,
         defaultSearchRadiusKm * 1000,
-        destinationName
+        label
       );
       if (cancelled) return;
       const sorted = sortStationsByPriceAndDistance(res.stations, activeLat, activeLng);
@@ -252,7 +245,7 @@ export default function MapPage({
       setSelectedStation(sorted[0] ?? null);
       setIsLoading(false);
 
-      // 처음 지도가 뜰 때 캠핑장 핀(⛺)과 주변 주유소 가격 핀들이 한 화면에 같이 보이도록 범위 조정
+      // 처음 지도가 뜰 때 캠핑장/중심 좌표와 주변 주유소 가격 핀들이 한 화면에 같이 보이도록 범위 조정
       setTimeout(() => {
         if (!cancelled) {
           fitMapToCenterAndStations(activeLat, activeLng, sorted);

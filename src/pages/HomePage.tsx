@@ -108,15 +108,12 @@ export default function HomePage({
   useEffect(() => {
     let cancelled = false;
     async function syncHomeStations() {
-      if (!hasSchedule || !hasDestination) {
-        setLiveStations(stations);
-        return;
-      }
+      const label = hasSchedule && hasDestination ? checklist.destination_name : '수도권 중심';
       const res = await fetchKeroseneStations(
         destLat,
         destLng,
         defaultSearchRadiusKm * 1000,
-        checklist.destination_name
+        label
       );
       if (!cancelled) {
         setLiveStations(res.stations);
@@ -132,7 +129,6 @@ export default function HomePage({
     destLat,
     destLng,
     checklist.destination_name,
-    stations,
     kakaoReady,
     defaultSearchRadiusKm,
   ]);
