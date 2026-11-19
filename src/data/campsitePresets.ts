@@ -420,7 +420,7 @@ export function estimateCampingClimate(targetDateStr: string, lat = 37.8142): {
 }
 
 /**
- * 계절별 AI 추천 준비물 목록 반환
+ * 계절별 AI 추천 준비물 목록 반환 (체크리스트 기본 항목 및 AI 추천 태그와 1:1 동기화)
  */
 export function getSeasonalRecommendations(season: SeasonTag): {
   name: string;
@@ -429,24 +429,24 @@ export function getSeasonalRecommendations(season: SeasonTag): {
   if (season === 'WINTER') {
     return [
       { name: '팬히터', category: 'WINTER_AID' },
+      { name: '등유통', category: 'WINTER_AID' },
+      { name: '전기장판', category: 'WINTER_AID' },
       { name: '일산화탄소 경보기', category: 'WINTER_AID' },
-      { name: '등유통 (제리캔)', category: 'WINTER_AID' },
-      { name: '동계 침낭 (-10℃)', category: 'SLEEPING' },
     ];
   }
   if (season === 'SUMMER') {
     return [
-      { name: '타프 팬 / 써큘레이터', category: 'ETC' },
-      { name: '아이스박스 / 쿨러', category: 'COOKING' },
+      { name: '써큘레이터', category: 'ETC' },
+      { name: '냉장고', category: 'ETC' },
+      { name: '타프', category: 'TENT' },
       { name: '모기장 / 벌레 기피제', category: 'ETC' },
-      { name: '우비 / 방수 타프', category: 'TENT' },
     ];
   }
   return [
-    { name: '전기장판 / 미니 팬히터', category: 'WINTER_AID' },
+    { name: '전기장판', category: 'WINTER_AID' },
     { name: '일산화탄소 경보기', category: 'WINTER_AID' },
-    { name: '화로대 & 장작', category: 'COOKING' },
-    { name: '경량 패딩 / 담요', category: 'SLEEPING' },
+    { name: '화로대', category: 'ETC' },
+    { name: '침낭', category: 'SLEEPING' },
   ];
 }
 

@@ -114,6 +114,7 @@ export default function App() {
             hasSchedule={hasSchedule}
             progress={progress}
             stations={mockStations}
+            defaultSearchRadiusKm={settings.defaultSearchRadiusKm}
             onGoChecklist={() => setActiveTab('checklist')}
             onGoMap={() => setActiveTab('map')}
             onOpenTripSetup={() => setShowTripSetupModal(true)}

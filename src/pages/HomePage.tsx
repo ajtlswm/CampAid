@@ -15,6 +15,7 @@ interface HomePageProps {
   hasSchedule: boolean;
   progress: number;
   stations: KeroseneStation[];
+  defaultSearchRadiusKm?: 1 | 3 | 5 | 10 | 15;
   onGoChecklist: () => void;
   onGoMap: () => void;
   onOpenTripSetup: () => void;
@@ -26,6 +27,7 @@ export default function HomePage({
   hasSchedule,
   progress,
   stations,
+  defaultSearchRadiusKm = 5,
   onGoChecklist,
   onGoMap,
   onOpenTripSetup,
@@ -113,10 +115,10 @@ export default function HomePage({
       const res = await fetchKeroseneStations(
         destLat,
         destLng,
-        5000,
+        defaultSearchRadiusKm * 1000,
         checklist.destination_name
       );
-      if (!cancelled && res.stations.length > 0) {
+      if (!cancelled) {
         setLiveStations(res.stations);
       }
     }
@@ -124,7 +126,16 @@ export default function HomePage({
     return () => {
       cancelled = true;
     };
-  }, [hasSchedule, hasDestination, destLat, destLng, checklist.destination_name, stations, kakaoReady]);
+  }, [
+    hasSchedule,
+    hasDestination,
+    destLat,
+    destLng,
+    checklist.destination_name,
+    stations,
+    kakaoReady,
+    defaultSearchRadiusKm,
+  ]);
 
   // 등유지도와 동일하게 1순위: 최저가순, 2순위(동일 가격 시): 최단거리순 정렬 후 1위 주유소 선택
   const matchedStation = useMemo(() => {
@@ -162,6 +173,26 @@ export default function HomePage({
     ? formatStayDuration(checklist.target_date, checklist.end_date)
     : '일정 미선택';
 
+  // 도로명/지번 주소에서 '도/시 + 시/군/구 + 읍/면/동' 3어절만 깔끔하게 추출 (예: 경기 연천군 장남면)
+  const regionSummary = useMemo(() => {
+    const addr = (checklist.destination_address || '').replace(/\([^)]*\)/g, '').trim();
+    if (!addr || addr === '사용자 지정 캠핑장') return '목적지 캠핑장';
+    const parts = addr.split(/\s+/);
+    const first = parts[0]
+      ?.replace('경기도', '경기')
+      .replace('강원특별자치도', '강원')
+      .replace('강원도', '강원')
+      .replace('충청북도', '충북')
+      .replace('충청남도', '충남')
+      .replace('전라북도', '전북')
+      .replace('전북특별자치도', '전북')
+      .replace('전라남도', '전남')
+      .replace('경상북도', '경북')
+      .replace('경상남도', '경남')
+      .replace('제주특별자치도', '제주');
+    return [first, ...parts.slice(1, 3)].filter(Boolean).join(' ');
+  }, [checklist.destination_address]);
+
   return (
     <div className="page-content px-4 pt-4 space-y-4 max-w-md mx-auto">
       {/* 1.2 개인화 캠핑 대시보드 (일정 있을 때 vs 일정 없을 때 분기) */}
@@ -196,24 +227,24 @@ export default function HomePage({
             </div>
           </div>
 
-          <div className="flex items-end justify-between mt-3">
-            <div onClick={onOpenTripSetup} className="cursor-pointer group">
-              <p className="text-xs text-gray-500 mb-0.5 flex items-center gap-1">
-                <span>목적지 캠핑장</span>
-                {hasDate && (
-                  <span className="text-[11px] text-forest font-semibold">
-                    ({checklist.target_date}
-                    {checklist.end_date && checklist.end_date !== checklist.target_date
-                      ? ` ~ ${checklist.end_date.slice(5)}`
-                      : ''}
-                    )
-                  </span>
-                )}
+          <div className="flex items-end justify-between gap-2 mt-3">
+            <div onClick={onOpenTripSetup} className="cursor-pointer group min-w-0 flex-1">
+              <p className="text-xs font-semibold text-forest mb-0.5 truncate">
+                🏕️ {regionSummary}
               </p>
-              <h2 className="text-lg font-bold text-gray-900 group-hover:text-forest transition-colors flex items-center gap-1.5">
+              <h2 className="text-lg font-extrabold text-gray-900 group-hover:text-forest transition-colors truncate">
                 📍 {hasDestination ? checklist.destination_name : '캠핑장 미정 (터치하여 선택)'}
               </h2>
-              <p className="text-xs text-gray-500 mt-0.5">{checklist.title}</p>
+              <p className="text-xs font-medium text-gray-500 mt-0.5 truncate">
+                🗓️{' '}
+                {hasDate
+                  ? `${checklist.target_date}${
+                      checklist.end_date && checklist.end_date !== checklist.target_date
+                        ? ` ~ ${checklist.end_date.slice(5)}`
+                        : ''
+                    }`
+                  : '날짜 미정 (터치하여 선택)'}
+              </p>
             </div>
 
             <div className="text-right bg-white px-3.5 py-2 rounded-2xl shadow-sm border border-gray-100 shrink-0">

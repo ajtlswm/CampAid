@@ -370,35 +370,38 @@ export async function fetchKeroseneStations(
   radiusMeters = 5000,
   areaLabel = '목적지 인근'
 ): Promise<{ stations: KeroseneStation[]; source: 'opinet' | 'mock' }> {
+  const targetRadiusKm = Math.max(radiusMeters / 1000, 1);
+
   const kakaoStations = await searchRealGasStationsByKakao(
     centerLat,
     centerLng,
     Math.max(radiusMeters, 15000)
   );
+  const filteredKakao = kakaoStations.filter(
+    (s) => getDistanceKm(centerLat, centerLng, s.latitude, s.longitude) <= targetRadiusKm
+  );
 
   const apiKey = import.meta.env.VITE_OPINET_API_KEY;
   if (!apiKey) {
     return {
-      stations:
-        kakaoStations.length > 0
-          ? kakaoStations
-          : getStationsAroundLocation(centerLat, centerLng, areaLabel),
+      stations: filteredKakao,
       source: 'mock',
     };
   }
 
   try {
     const { x, y } = wgs84ToKatec(centerLat, centerLng);
-    let rawList = await fetchOpinetAtPoint(apiKey, x, y, 5000);
+    const singleRadius = Math.min(Math.max(radiusMeters, 1000), 5000);
+    let rawList = await fetchOpinetAtPoint(apiKey, x, y, singleRadius);
 
-    // 외곽 지역(연천·가평·홍천 등)에서 반경 5km 내 주유소가 적을 경우,
-    // 동·서·남·북 4km 지점을 병렬 조회하여 오피넷 앱과 동일하게 반경 ~9km 내 등유 주유소를 모두 수집
-    if (rawList.length < 6) {
+    // 탐색 반경이 5km를 초과(10km, 15km)할 때만 동·서·남·북 4방향을 병렬 조회하여 광역 수집
+    if (radiusMeters > 5000) {
+      const offsetDist = radiusMeters >= 15000 ? 4800 : 3800;
       const offsets = [
-        { dx: 3800, dy: 3800 },
-        { dx: -3800, dy: 3800 },
-        { dx: 3800, dy: -3800 },
-        { dx: -3800, dy: -3800 },
+        { dx: offsetDist, dy: offsetDist },
+        { dx: -offsetDist, dy: offsetDist },
+        { dx: offsetDist, dy: -offsetDist },
+        { dx: -offsetDist, dy: -offsetDist },
       ];
       const extraLists = await Promise.all(
         offsets.map((o) => fetchOpinetAtPoint(apiKey, x + o.dx, y + o.dy, 5000))
@@ -414,11 +417,8 @@ export async function fetchKeroseneStations(
 
     if (rawList.length === 0) {
       return {
-        stations:
-          kakaoStations.length > 0
-            ? kakaoStations
-            : getStationsAroundLocation(centerLat, centerLng, areaLabel),
-        source: 'mock',
+        stations: filteredKakao,
+        source: 'opinet',
       };
     }
 
@@ -468,21 +468,18 @@ export async function fetchKeroseneStations(
       };
     });
 
-    // 중심 좌표로부터 거리 15km 이내 주유소만 필터링 후 최저가순 정렬
+    // 사용자가 설정한 탐색 반경(1km / 3km / 5km / 10km / 15km) 이내 주유소만 정확히 필터링
     const nearbyParsed = parsed.filter(
-      (s) => getDistanceKm(centerLat, centerLng, s.latitude, s.longitude) <= 15
+      (s) => getDistanceKm(centerLat, centerLng, s.latitude, s.longitude) <= targetRadiusKm
     );
 
     return {
-      stations: nearbyParsed.length > 0 ? nearbyParsed : parsed,
+      stations: nearbyParsed,
       source: 'opinet',
     };
   } catch {
     return {
-      stations:
-        kakaoStations.length > 0
-          ? kakaoStations
-          : getStationsAroundLocation(centerLat, centerLng, areaLabel),
+      stations: filteredKakao,
       source: 'mock',
     };
   }

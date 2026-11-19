@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import type {
   AppSettings,
   CampingChecklist,
@@ -56,8 +56,18 @@ export default function SettingsModal({
 }: SettingsModalProps) {
   const [nickname, setNickname] = useState(settings.nickname);
   const [camperTitle, setCamperTitle] = useState(settings.camperTitle);
-  const [radiusKm, setRadiusKm] = useState<5 | 10 | 15>(settings.defaultSearchRadiusKm);
+  const [radiusKm, setRadiusKm] = useState<1 | 3 | 5 | 10 | 15>(
+    settings.defaultSearchRadiusKm
+  );
   const [enableToast, setEnableToast] = useState(settings.enableKeroseneToast);
+
+  useEffect(() => {
+    if (!visible) return;
+    setNickname(settings.nickname);
+    setCamperTitle(settings.camperTitle);
+    setRadiusKm(settings.defaultSearchRadiusKm);
+    setEnableToast(settings.enableKeroseneToast);
+  }, [visible, settings]);
 
   const [backupCodeInput, setBackupCodeInput] = useState('');
   const [showPasteBox, setShowPasteBox] = useState(false);
@@ -136,7 +146,7 @@ export default function SettingsModal({
       if (parsed.settings) {
         setNickname(parsed.settings.nickname || DEFAULT_APP_SETTINGS.nickname);
         setCamperTitle(parsed.settings.camperTitle || DEFAULT_APP_SETTINGS.camperTitle);
-        setRadiusKm(parsed.settings.defaultSearchRadiusKm || 10);
+        setRadiusKm(parsed.settings.defaultSearchRadiusKm || 5);
         setEnableToast(parsed.settings.enableKeroseneToast ?? true);
       }
       setBackupCodeInput('');
@@ -421,19 +431,28 @@ export default function SettingsModal({
               <span className="text-[11px] font-bold text-gray-600 block mb-1.5">
                 주유소 기본 탐색 반경
               </span>
-              <div className="grid grid-cols-3 gap-1.5">
-                {([5, 10, 15] as const).map((km) => (
+              <div className="grid grid-cols-5 gap-1.5">
+                {([1, 3, 5, 10, 15] as const).map((km) => (
                   <button
                     key={km}
                     type="button"
-                    onClick={() => setRadiusKm(km)}
-                    className={`py-2 rounded-xl text-xs font-bold border transition-colors ${
+                    onClick={() => {
+                      setRadiusKm(km);
+                      onUpdateSettings({
+                        nickname: nickname.trim() || DEFAULT_APP_SETTINGS.nickname,
+                        camperTitle: camperTitle.trim() || DEFAULT_APP_SETTINGS.camperTitle,
+                        defaultSearchRadiusKm: km,
+                        enableKeroseneToast: enableToast,
+                      });
+                      showNotice(`✓ 주유소 탐색 반경이 ${km}km로 즉시 적용되었습니다.`);
+                    }}
+                    className={`py-2 rounded-xl text-xs font-bold border transition-colors whitespace-nowrap ${
                       radiusKm === km
                         ? 'bg-forest text-white border-forest shadow-2xs'
                         : 'bg-surface text-gray-600 border-gray-200'
                     }`}
                   >
-                    {km === 5 ? '5km (근교)' : km === 10 ? '10km (권장)' : '15km (외곽)'}
+                    {km}km
                   </button>
                 ))}
               </div>

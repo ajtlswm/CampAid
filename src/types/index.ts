@@ -122,13 +122,13 @@ export const KEROSENE_KEYWORDS = ['팬히터', '난로', '등유', '등유통', 
 export interface AppSettings {
   nickname: string;
   camperTitle: string;
-  defaultSearchRadiusKm: 5 | 10 | 15;
+  defaultSearchRadiusKm: 1 | 3 | 5 | 10 | 15;
   enableKeroseneToast: boolean;
 }
 
 export const DEFAULT_APP_SETTINGS: AppSettings = {
   nickname: '에이드캠퍼',
   camperTitle: '프로 동계 캠퍼',
-  defaultSearchRadiusKm: 10,
+  defaultSearchRadiusKm: 5,
   enableKeroseneToast: true,
 };

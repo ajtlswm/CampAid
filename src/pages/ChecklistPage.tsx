@@ -238,21 +238,29 @@ export default function ChecklistPage({
           </div>
           <div className="flex flex-wrap gap-1.5">
             {recommendations.map((rec) => {
-              const alreadyExists = checklist.items.some((i) =>
-                i.item_name.includes(rec.name.split(' ')[0])
+              const matchedItem = checklist.items.find(
+                (i) => i.item_name === rec.name || i.item_name.includes(rec.name)
               );
+              const isChecked = Boolean(matchedItem?.is_checked);
+
               return (
                 <button
                   key={rec.name}
-                  onClick={() => onAddAiItem(rec.name, rec.category)}
-                  disabled={alreadyExists}
-                  className={`text-xs px-3 py-1.5 rounded-full font-medium transition-all flex items-center gap-1 ${
-                    alreadyExists
-                      ? 'bg-gray-100 text-gray-400 cursor-default'
+                  type="button"
+                  onClick={() => {
+                    if (matchedItem) {
+                      onToggleItem(matchedItem.item_id);
+                    } else {
+                      onAddAiItem(rec.name, rec.category);
+                    }
+                  }}
+                  className={`text-xs px-3 py-1.5 rounded-full transition-all flex items-center gap-1 cursor-pointer ${
+                    isChecked
+                      ? 'bg-gray-100 text-gray-400 line-through font-medium hover:bg-gray-200'
                       : 'bg-aid-red/10 text-aid-red hover:bg-aid-red hover:text-white font-bold'
                   }`}
                 >
-                  <span>{alreadyExists ? '✓' : '+'}</span>
+                  <span>{isChecked ? '✓' : '+'}</span>
                   <span>{rec.name}</span>
                 </button>
               );
@@ -338,11 +346,13 @@ export default function ChecklistPage({
                           >
                             {item.item_name}
                           </span>
-                          {item.is_ai_recommended && !item.is_checked && (
-                            <span className="ml-2 text-[10px] font-bold text-aid-red bg-aid-red/10 px-1.5 py-0.5 rounded">
-                              AI 추천
-                            </span>
-                          )}
+                          {(item.is_ai_recommended ||
+                            recommendations.some((rec) => rec.name === item.item_name)) &&
+                            !item.is_checked && (
+                              <span className="ml-2 text-[10px] font-bold text-aid-red bg-aid-red/10 px-1.5 py-0.5 rounded">
+                                AI 추천
+                              </span>
+                            )}
                         </div>
                       </div>
                       <div className="flex items-center gap-2 shrink-0">

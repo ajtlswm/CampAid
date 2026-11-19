@@ -14,7 +14,7 @@ interface MapPageProps {
   destinationAddress?: string;
   destinationLat?: number;
   destinationLng?: number;
-  defaultSearchRadiusKm?: 5 | 10 | 15;
+  defaultSearchRadiusKm?: 1 | 3 | 5 | 10 | 15;
   onOpenTripSetup: () => void;
 }
 
@@ -77,7 +77,7 @@ export default function MapPage({
   destinationAddress,
   destinationLat,
   destinationLng,
-  defaultSearchRadiusKm = 10,
+  defaultSearchRadiusKm = 5,
   onOpenTripSetup,
 }: MapPageProps) {
   const hasDestination = Boolean(hasSchedule && destinationName);
@@ -109,6 +109,9 @@ export default function MapPage({
   const [showCampTooltip, setShowCampTooltip] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [kakaoReady, setKakaoReady] = useState(false);
+  const [myLocation, setMyLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [isLocating, setIsLocating] = useState(false);
+  const [locationNotice, setLocationNotice] = useState<string | null>(null);
   const [currentMapCenter, setCurrentMapCenter] = useState<{ lat: number; lng: number }>({
     lat: activeLat,
     lng: activeLng,
@@ -142,16 +145,33 @@ export default function MapPage({
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const overlaysRef = useRef<any[]>([]);
 
-  // 주유소 선택 또는 상세창 펼침 시 하단 상세정보·길찾기 버튼까지 부드럽게 스크롤 이동
+  // 주유소 선택 또는 상세창 펼침 시 카카오맵 리레이아웃
   const scrollToStationCard = () => {
     setTimeout(() => {
       mapInstanceRef.current?.relayout?.();
-      window.scrollTo({
-        top: document.documentElement.scrollHeight,
-        behavior: 'smooth',
-      });
-    }, 80);
+    }, 60);
   };
+
+  // 지도 컨테이너 크기가 변할 때마다(정보창 접기/펼치기, 창 크기 변경 등) ResizeObserver로 즉시 카카오맵 리레이아웃
+  useEffect(() => {
+    const el = mapContainerRef.current;
+    if (!el || typeof ResizeObserver === 'undefined') return;
+    const ro = new ResizeObserver(() => {
+      mapInstanceRef.current?.relayout?.();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [kakaoReady]);
+
+  // 정보창 접기/펼치기 상태가 바뀔 때마다 카카오맵 캔버스 크기 즉시 재계산
+  useEffect(() => {
+    const t1 = setTimeout(() => mapInstanceRef.current?.relayout?.(), 20);
+    const t2 = setTimeout(() => mapInstanceRef.current?.relayout?.(), 120);
+    return () => {
+      clearTimeout(t1);
+      clearTimeout(t2);
+    };
+  }, [isCardExpanded]);
 
   // 캠핑장(또는 기준 좌표)과 주변 주유소 마커들이 한 화면에 모두 들어오도록 지도 범위(Bounds) 자동 맞춤
   const fitMapToCenterAndStations = (
@@ -164,7 +184,17 @@ export default function MapPage({
       mapInstanceRef.current.relayout();
       if (stationList.length === 0) {
         mapInstanceRef.current.setCenter(new window.kakao.maps.LatLng(centerLat, centerLng));
-        mapInstanceRef.current.setLevel(7);
+        const radiusLevel =
+          defaultSearchRadiusKm <= 1
+            ? 4
+            : defaultSearchRadiusKm <= 3
+            ? 5
+            : defaultSearchRadiusKm <= 5
+            ? 6
+            : defaultSearchRadiusKm <= 10
+            ? 7
+            : 8;
+        mapInstanceRef.current.setLevel(radiusLevel);
         return;
       }
 
@@ -337,14 +367,18 @@ export default function MapPage({
       overlaysRef.current.forEach((ov) => ov.setMap(null));
       overlaysRef.current = [];
 
-      // 1) 목적지 캠핑장이 설정된 경우: C안 (원형 아이콘 핀 ⛺ + 클릭 시 캠핑장 이름 툴팁 토글)
+      // 1) 목적지 캠핑장이 설정된 경우: C안 (원형 아이콘 핀 ⛺ 고정 + 클릭 시 절대위치 툴팁 토글)
       if (hasDestination) {
         const campEl = document.createElement('div');
         campEl.style.cursor = 'pointer';
         campEl.innerHTML = `
-          <div style="display:flex;flex-direction:column;align-items:center;position:relative;">
+          <div style="width:34px;height:34px;position:relative;">
             <div class="camp-pin-tooltip" style="
               display: none;
+              position: absolute;
+              bottom: 40px;
+              left: 50%;
+              transform: translateX(-50%);
               background: #1E3F20;
               color: #FFFFFF;
               border: 1.5px solid #FFFFFF;
@@ -354,7 +388,7 @@ export default function MapPage({
               font-size: 11px;
               box-shadow: 0 4px 10px rgba(0,0,0,0.25);
               white-space: nowrap;
-              margin-bottom: 5px;
+              pointer-events: none;
             ">
               🏕️ ${destinationName}
             </div>
@@ -375,7 +409,8 @@ export default function MapPage({
             </div>
           </div>
         `;
-        campEl.onclick = () => {
+        campEl.onclick = (e) => {
+          e.stopPropagation();
           const tip = campEl.querySelector('.camp-pin-tooltip') as HTMLElement | null;
           if (tip) {
             tip.style.display = tip.style.display === 'none' ? 'block' : 'none';
@@ -384,7 +419,8 @@ export default function MapPage({
         const campOverlay = new window.kakao.maps.CustomOverlay({
           position: new window.kakao.maps.LatLng(activeLat, activeLng),
           content: campEl,
-          yAnchor: 0.85,
+          xAnchor: 0.5,
+          yAnchor: 0.5,
           zIndex: 30,
         });
         campOverlay.setMap(mapInstanceRef.current);
@@ -456,6 +492,43 @@ export default function MapPage({
         overlay.setMap(mapInstanceRef.current);
         overlaysRef.current.push(overlay);
       });
+
+      // 3) 내 현재 위치(GPS) 마커 표시
+      if (myLocation) {
+        const myLocEl = document.createElement('div');
+        myLocEl.innerHTML = `
+          <div style="display:flex;flex-direction:column;align-items:center;">
+            <div style="
+              background: #EF4444;
+              color: #FFFFFF;
+              font-size: 10px;
+              font-weight: 800;
+              padding: 2px 7px;
+              border-radius: 9999px;
+              border: 1.5px solid #FFFFFF;
+              box-shadow: 0 2px 6px rgba(0,0,0,0.25);
+              margin-bottom: 3px;
+              white-space: nowrap;
+            ">내 위치</div>
+            <div style="
+              width: 16px;
+              height: 16px;
+              border-radius: 9999px;
+              background: #EF4444;
+              border: 3px solid #FFFFFF;
+              box-shadow: 0 0 0 5px rgba(239, 68, 68, 0.32), 0 2px 6px rgba(0,0,0,0.3);
+            "></div>
+          </div>
+        `;
+        const myLocOverlay = new window.kakao.maps.CustomOverlay({
+          position: new window.kakao.maps.LatLng(myLocation.lat, myLocation.lng),
+          content: myLocEl,
+          yAnchor: 0.85,
+          zIndex: 40,
+        });
+        myLocOverlay.setMap(mapInstanceRef.current);
+        overlaysRef.current.push(myLocOverlay);
+      }
     } catch {
       setKakaoReady(false);
     }
@@ -468,6 +541,7 @@ export default function MapPage({
     destinationName,
     activeLat,
     activeLng,
+    myLocation,
   ]);
 
   // 지정 좌표 기준 주유소 검색 및 지도 범위 자동 보정
@@ -485,27 +559,10 @@ export default function MapPage({
     if (result.stations.length > 0) {
       const sorted = sortStationsByPriceAndDistance(result.stations, lat, lng);
       setSelectedStation(sorted[0]);
-
-      // 현재 화면(Bounds) 안에 검색된 주유소가 하나도 안 보일 정도로 확대되어 있다면
-      // 가장 가까운 주유소들이 화면에 보이도록 지도 범위를 자동 조정
-      if (mapInstanceRef.current && kakaoReady && window.kakao?.maps) {
-        try {
-          const currentBounds = mapInstanceRef.current.getBounds();
-          const anyVisible = result.stations.some((st) =>
-            currentBounds.contain(new window.kakao.maps.LatLng(st.latitude, st.longitude))
-          );
-          if (!anyVisible) {
-            const bounds = new window.kakao.maps.LatLngBounds();
-            bounds.extend(new window.kakao.maps.LatLng(lat, lng));
-            result.stations.slice(0, 3).forEach((st) => {
-              bounds.extend(new window.kakao.maps.LatLng(st.latitude, st.longitude));
-            });
-            mapInstanceRef.current.setBounds(bounds);
-          }
-        } catch {
-          // ignore bounds error
-        }
-      }
+      fitMapToCenterAndStations(lat, lng, sorted);
+    } else {
+      setSelectedStation(null);
+      fitMapToCenterAndStations(lat, lng, []);
     }
     setIsLoading(false);
   };
@@ -552,6 +609,47 @@ export default function MapPage({
     fitMapToCenterAndStations(activeLat, activeLng, filteredStations);
   };
 
+  // 브라우저 GPS 현재 위치로 지도 이동 및 주변 등유 주유소 즉시 검색
+  const handleMoveToMyLocation = () => {
+    if (!navigator.geolocation) {
+      setLocationNotice('이 브라우저에서는 위치 정보(GPS) 기능을 지원하지 않습니다.');
+      setTimeout(() => setLocationNotice(null), 3000);
+      return;
+    }
+
+    setIsLocating(true);
+    setLocationNotice(null);
+
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        const lat = Number(pos.coords.latitude.toFixed(6));
+        const lng = Number(pos.coords.longitude.toFixed(6));
+        setMyLocation({ lat, lng });
+        setSearchMode('CURRENT');
+        setCurrentMapCenter({ lat, lng });
+        setIsLocating(false);
+
+        if (mapInstanceRef.current && kakaoReady && window.kakao?.maps) {
+          const locLatLng = new window.kakao.maps.LatLng(lat, lng);
+          mapInstanceRef.current.setCenter(locLatLng);
+          mapInstanceRef.current.setLevel(6);
+        }
+
+        await executeStationSearch(lat, lng, '내 현재 위치');
+      },
+      (err) => {
+        setIsLocating(false);
+        const msg =
+          err.code === 1
+            ? '위치 권한이 거부되었습니다. 주소창 왼쪽에서 위치 권한을 허용해 주세요.'
+            : '현재 위치를 가져오지 못했습니다. 잠시 후 다시 시도해 주세요.';
+        setLocationNotice(msg);
+        setTimeout(() => setLocationNotice(null), 3500);
+      },
+      { enableHighAccuracy: true, timeout: 8000, maximumAge: 60000 }
+    );
+  };
+
   // §5.2 외부 내비게이션 앱 연동 (티맵과 카카오내비 완전 분리)
   const handleStartNavigation = (provider: 'KAKAO' | 'TMAP', station: KeroseneStation) => {
     const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
@@ -594,9 +692,9 @@ export default function MapPage({
   };
 
   return (
-    <div className="max-w-md mx-auto flex flex-col min-h-[calc(100dvh-56px)] pb-14">
+    <div className="fixed inset-x-0 top-14 bottom-14 max-w-md mx-auto flex flex-col overflow-hidden bg-white">
       {/* 3.1 상단 검색 모드 전환 & 목적지 캠핑장 동기화 배너 */}
-      <div className="bg-white px-4 pt-3 pb-2.5 shadow-sm border-b border-gray-100 z-20 space-y-2">
+      <div className="bg-white px-4 pt-3 pb-2.5 shadow-sm border-b border-gray-100 z-20 space-y-2 shrink-0">
         <div className="flex items-center gap-1.5">
           <div className="flex flex-1 bg-surface p-1 rounded-xl">
             <button
@@ -679,20 +777,18 @@ export default function MapPage({
           >
             🚗 얇은주유건 ({stations.filter((s) => s.has_thin_nozzle).length})
           </button>
-          <span className="ml-auto text-[10px] font-bold text-forest shrink-0">
-            {dataSource === 'opinet'
-              ? '🟢 오피넷 실시간'
-              : `🟢 ${hasDestination && searchMode === 'ROUTE' ? shortCampName : '현 중심'} 매칭`}
+          <span className="ml-auto text-[10px] font-bold text-forest shrink-0 whitespace-nowrap">
+            🟢 반경 {defaultSearchRadiusKm}km ·{' '}
+            {dataSource === 'opinet' ? '오피넷 실시간' : '주변 매칭'}
           </span>
         </div>
       </div>
 
       {/* 3.1 & 3.3 통합 지도 뷰 + 커스텀 가격 말풍선 마커 */}
-      <div className="relative flex-1 min-h-[300px] bg-[#e8efe9] overflow-hidden">
-        <div
-          ref={mapContainerRef}
-          className={`absolute inset-0 w-full h-full ${kakaoReady ? 'block' : 'hidden'}`}
-        />
+      <div className="relative flex-1 min-h-[140px] bg-[#e8efe9] overflow-hidden z-10">
+        <div className={`absolute inset-0 w-full h-full ${kakaoReady ? 'block' : 'hidden'}`}>
+          <div ref={mapContainerRef} className="w-full h-full" />
+        </div>
 
         {!kakaoReady && (
           <div className="absolute inset-0 w-full h-full select-none overflow-hidden bg-gradient-to-br from-[#e4efe7] via-[#eef3ef] to-[#dde8e0]">
@@ -705,14 +801,14 @@ export default function MapPage({
               <rect width="100%" height="100%" fill="url(#grid)" />
             </svg>
 
-            {/* 중앙 목적지 캠핑장 핀 (인터랙티브 캔버스 폴백 시: C안 원형 아이콘 핀 + 클릭 시 툴팁) */}
+            {/* 중앙 목적지 캠핑장 핀 (인터랙티브 캔버스 폴백 시: C안 원형 아이콘 핀 고정 + 클릭 시 절대위치 툴팁) */}
             {hasDestination ? (
               <div
                 style={{ top: '44%', left: '52%' }}
-                className="absolute -translate-x-1/2 -translate-y-1/2 z-30 flex flex-col items-center"
+                className="absolute -translate-x-1/2 -translate-y-1/2 z-30 w-9 h-9"
               >
                 {showCampTooltip && (
-                  <div className="mb-1.5 bg-forest text-white text-[11px] font-extrabold px-2.5 py-0.5 rounded-full shadow-md border border-white whitespace-nowrap">
+                  <div className="absolute bottom-11 left-1/2 -translate-x-1/2 bg-forest text-white text-[11px] font-extrabold px-2.5 py-0.5 rounded-full shadow-md border border-white whitespace-nowrap pointer-events-none">
                     🏕️ {destinationName}
                   </div>
                 )}
@@ -777,7 +873,7 @@ export default function MapPage({
         <button
           onClick={handleReSearch}
           disabled={isLoading}
-          className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-white hover:bg-gray-50 text-forest font-bold text-xs px-3.5 py-1.5 rounded-full shadow-lg border border-forest/20 flex items-center gap-1.5 active:scale-95 transition-all"
+          className="absolute top-3 left-1/2 -translate-x-1/2 z-30 bg-white hover:bg-gray-50 text-forest font-bold text-xs px-3.5 py-1.5 rounded-full shadow-lg border border-forest/20 flex items-center gap-1.5 active:scale-95 transition-all whitespace-nowrap"
         >
           <span>🔍</span>
           <span>
@@ -788,13 +884,47 @@ export default function MapPage({
               : '현 지도 재검색'}
           </span>
         </button>
+
+        {/* 위치 권한 안내 토스트 */}
+        {locationNotice && (
+          <div className="absolute top-12 left-1/2 -translate-x-1/2 z-30 bg-gray-900/90 text-white text-[11px] font-bold px-3.5 py-2 rounded-xl shadow-lg max-w-[90%] text-center">
+            ⚠️ {locationNotice}
+          </div>
+        )}
+
+        {/* 우측 하단 '내 위치(현재 위치)' 플로팅 버튼 */}
+        <button
+          type="button"
+          onClick={handleMoveToMyLocation}
+          disabled={isLocating}
+          title="내 현재 위치 중심으로 주유소 찾기"
+          className="absolute bottom-3 right-3 z-30 bg-white hover:bg-gray-50 text-gray-800 font-bold text-xs px-3 py-2 rounded-full shadow-lg border border-gray-200 flex items-center gap-1.5 active:scale-95 transition-all"
+        >
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#2563EB"
+            strokeWidth={2.3}
+            className={isLocating ? 'animate-spin' : ''}
+          >
+            <circle cx="12" cy="12" r="3" />
+            <circle cx="12" cy="12" r="8" />
+            <line x1="12" y1="1" x2="12" y2="4" />
+            <line x1="12" y1="20" x2="12" y2="23" />
+            <line x1="1" y1="12" x2="4" y2="12" />
+            <line x1="20" y1="12" x2="23" y2="12" />
+          </svg>
+          <span>{isLocating ? '위치 확인중...' : '내 위치'}</span>
+        </button>
       </div>
 
       {/* 3.4 하단 상세 슬라이드 카드 (방안 1: 1줄 미니 요약 바 ↔ 상세 펼침 토글) */}
       {selectedStation && (
         <section
           ref={stationCardRef}
-          className="bg-white rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.08)] border-t border-gray-100 z-20 transition-all"
+          className="shrink-0 bg-white rounded-t-2xl shadow-[0_-4px_20px_rgba(0,0,0,0.08)] border-t border-gray-100 z-30 transition-all"
         >
           {/* 상단 드래그 핸들 & 접기/펼치기 토글 헤더 */}
           <div
@@ -806,7 +936,6 @@ export default function MapPage({
               } else {
                 setTimeout(() => {
                   mapInstanceRef.current?.relayout?.();
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
                 }, 60);
               }
             }}
@@ -858,31 +987,29 @@ export default function MapPage({
             </div>
           </div>
 
-          {/* 펼쳐진 상태일 때만 상세 주소 · 좌표 · 주유소 칩 · 내비게이션 버튼 노출 */}
+          {/* 펼쳐진 상태일 때만 상세 주소 · 주유소 칩 · 내비게이션 버튼 노출 */}
           {isCardExpanded && (
-            <div className="px-4 pb-3.5 pt-2 space-y-2.5 border-t border-gray-100">
-              <div>
-                <p className="text-xs text-gray-600">
-                  {selectedStation.address}
-                  {hasDestination
-                    ? ` · 🏕️ ${destinationName}까지 약 ${getDistanceKm(
-                        activeLat,
-                        activeLng,
-                        selectedStation.latitude,
-                        selectedStation.longitude
-                      )}km`
-                    : ''}
-                </p>
-                <p className="text-[11px] font-mono text-gray-400 mt-0.5">
-                  🌐 좌표: {selectedStation.latitude.toFixed(4)}° N,{' '}
-                  {selectedStation.longitude.toFixed(4)}° E
-                </p>
-              </div>
+            <div className="px-4 pb-3 pt-2 space-y-2 border-t border-gray-100">
+              <p className="text-xs text-gray-600 flex items-center gap-2 whitespace-nowrap truncate">
+                <span className="truncate">{selectedStation.address}</span>
+                {hasDestination && (
+                  <span className="font-bold text-forest shrink-0">
+                    🏕️ 약{' '}
+                    {getDistanceKm(
+                      activeLat,
+                      activeLng,
+                      selectedStation.latitude,
+                      selectedStation.longitude
+                    )}
+                    km
+                  </span>
+                )}
+              </p>
 
               {selectedStation.review_summary && (
-                <div className="bg-surface rounded-xl px-3 py-2 text-xs text-gray-700 flex items-center gap-2">
+                <div className="bg-surface rounded-xl px-3 py-1.5 text-xs text-gray-700 flex items-center gap-2 whitespace-nowrap truncate">
                   <span>💬</span>
-                  <span className="font-medium">{selectedStation.review_summary}</span>
+                  <span className="font-medium truncate">{selectedStation.review_summary}</span>
                 </div>
               )}
 
@@ -928,6 +1055,23 @@ export default function MapPage({
               </div>
             </div>
           )}
+        </section>
+      )}
+
+      {/* 설정한 반경 내 주유소가 0곳일 때 안내 카드 */}
+      {!selectedStation && !isLoading && (
+        <section className="shrink-0 bg-white rounded-t-2xl px-4 py-3.5 shadow-[0_-4px_20px_rgba(0,0,0,0.08)] border-t border-gray-100 z-30 flex items-center justify-between gap-2">
+          <div>
+            <p className="text-xs font-extrabold text-gray-800">
+              ℹ️ 반경 {defaultSearchRadiusKm}km 이내에 등유 주유소가 없습니다
+            </p>
+            <p className="text-[11px] text-gray-500 mt-0.5">
+              상단 우측 ⚙️ 설정에서 탐색 반경을 5km 또는 10km로 넓혀보세요.
+            </p>
+          </div>
+          <span className="text-[11px] font-bold text-forest bg-forest/10 px-2.5 py-1 rounded-lg whitespace-nowrap shrink-0">
+            반경 {defaultSearchRadiusKm}km
+          </span>
         </section>
       )}
     </div>

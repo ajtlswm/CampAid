@@ -30,6 +30,15 @@ body {
   padding-bottom: 80px;
 }
 
+/* iOS(아이폰) 사파리에서 입력창(input/select/textarea) 터치 시 화면 자동 확대(Zoom-in) 방지 */
+@supports (-webkit-touch-callout: none) {
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
 /* 커스텀 스크롤바 */
 ::-webkit-scrollbar {
   width: 4px;
