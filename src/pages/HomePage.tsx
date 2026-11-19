@@ -276,33 +276,30 @@ export default function HomePage({
         </section>
       ) : (
         /* 일정이 없을 때 (Empty Schedule State) */
-        <section className="bg-surface rounded-2xl p-5 shadow-sm border border-dashed border-forest/35">
-          <div className="flex items-start justify-between gap-3">
-            <div>
-              <span className="inline-flex items-center gap-1 bg-forest/10 text-forest text-[11px] font-bold px-2.5 py-0.5 rounded-full">
-                ⛺ 캠핑 일정 & 캠핑장 미선택
-              </span>
-              <h2 className="text-base font-bold text-gray-900 mt-2">
-                아직 선택된 캠핑 일정이 없어요
-              </h2>
-              <p className="text-xs text-gray-500 mt-1 leading-relaxed">
-                일정 없이도 기본 체크리스트와 등유 지도를 이용할 수 있어요. 다음 캠핑 날짜와 캠핑장을 정하셨다면 등록해 보세요!
-              </p>
-            </div>
-            <div className="text-right bg-white px-3 py-2 rounded-2xl shadow-2xs border border-gray-100 shrink-0">
-              <p className="text-[10px] text-gray-400 font-medium">현재 시즌</p>
-              <p className="text-sm font-extrabold text-forest mt-0.5">
-                {climate.seasonLabel} {climate.weatherIcon}
-              </p>
-            </div>
+        <section className="bg-surface rounded-2xl p-5 shadow-sm border border-forest/15">
+          {/* 상단 뱃지 라인 (상태 & 현재 시즌) */}
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <span className="inline-flex items-center gap-1.5 bg-forest/10 text-forest text-xs font-bold px-2.5 py-1 rounded-full">
+              ⛺ 일정 준비 중
+            </span>
+            <span className="inline-flex items-center gap-1 bg-white text-gray-700 border border-gray-200/80 text-xs font-bold px-2.5 py-1 rounded-full shadow-2xs">
+              <span className="text-gray-400 font-medium">현재</span> {climate.seasonLabel} {climate.weatherIcon}
+            </span>
           </div>
+
+          <h2 className="text-lg font-extrabold text-gray-900 break-keep leading-snug">
+            설레는 다음 캠핑을 준비해볼까요?
+          </h2>
+          <p className="text-xs text-gray-500 mt-1.5 break-keep leading-relaxed">
+            날짜와 목적지를 등록하면 기상 예보와 계절 맞춤 챙김목록을 자동으로 준비해 드려요.
+          </p>
 
           <button
             onClick={onOpenTripSetup}
-            className="mt-3.5 w-full bg-forest hover:bg-forest-600 text-white text-xs font-bold py-2.5 rounded-xl shadow-sm transition-colors flex items-center justify-center gap-1.5"
+            className="mt-4 w-full bg-forest hover:bg-forest-600 active:scale-[0.99] text-white text-sm font-bold py-3 rounded-xl shadow-sm transition-all flex items-center justify-center gap-2"
           >
             <span>🗓️</span>
-            <span>+ 새 캠핑 일정 & 목적지 캠핑장 선택하기</span>
+            <span>일정 & 캠핑장 등록하기</span>
           </button>
         </section>
       )}
@@ -310,16 +307,16 @@ export default function HomePage({
       {/* 1.3 핵심 기능 대형 카드 A: 내 캠핑 짐 챙기기 */}
       <section
         onClick={onGoChecklist}
-        className="bg-white rounded-2xl p-5 shadow-md border border-gray-100 cursor-pointer hover:border-forest/40 transition-all active:scale-[0.99]"
+        className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 cursor-pointer hover:border-forest/40 transition-all active:scale-[0.99]"
       >
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">🎒</span>
-            <h3 className="font-bold text-base text-gray-900">
-              {hasSchedule ? `내 캠핑 짐 챙기기 (${progress}%)` : `기본 캠핑 짐 점검하기 (${progress}%)`}
+        <div className="flex items-center justify-between gap-3 mb-2.5">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-xl shrink-0">🎒</span>
+            <h3 className="font-extrabold text-base text-gray-900 truncate">
+              {hasSchedule ? '내 캠핑 짐 챙기기' : '기본 캠핑 짐 점검하기'}
             </h3>
           </div>
-          <span className="text-xs font-bold text-forest bg-forest/10 px-2.5 py-1 rounded-full">
+          <span className="text-xs font-bold text-forest bg-forest/10 px-2.5 py-1 rounded-full whitespace-nowrap shrink-0">
             {checklist.items.filter((i) => i.is_checked).length} / {checklist.items.length} 완료
           </span>
         </div>
@@ -328,8 +325,8 @@ export default function HomePage({
           <ProgressBar progress={progress} />
         </div>
 
-        <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
-          <div className="text-xs text-gray-600 truncate pr-2">
+        <div className="pt-2.5 border-t border-gray-100 flex items-center justify-between text-xs">
+          <div className="truncate pr-2 text-gray-600">
             {uncheckedItems.length > 0 ? (
               <>
                 <span className="font-bold text-aid-red">미체크 {uncheckedItems.length}개: </span>
@@ -345,25 +342,27 @@ export default function HomePage({
               <span className="font-bold text-forest">모든 캠핑 준비물을 챙겼어요! 🎉</span>
             )}
           </div>
-          <span className="text-xs font-bold text-forest shrink-0">챙기러 가기 →</span>
+          <span className="font-bold text-forest whitespace-nowrap shrink-0 flex items-center gap-0.5">
+            챙기러 가기 <span className="text-xs">→</span>
+          </span>
         </div>
       </section>
 
       {/* 1.3 핵심 기능 대형 카드 B: 등유 주유소 찾기 */}
       <section
         onClick={onGoMap}
-        className="bg-white rounded-2xl p-5 shadow-md border border-gray-100 cursor-pointer hover:border-forest/40 transition-all active:scale-[0.99]"
+        className="bg-white rounded-2xl p-5 shadow-sm border border-gray-100 cursor-pointer hover:border-forest/40 transition-all active:scale-[0.99]"
       >
-        <div className="flex items-center justify-between mb-2">
-          <div className="flex items-center gap-2">
-            <span className="text-2xl">⛽</span>
-            <h3 className="font-bold text-base text-gray-900">
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-xl shrink-0">⛽</span>
+            <h3 className="font-extrabold text-base text-gray-900 truncate">
               {hasSchedule && hasDestination
                 ? '가는 길에 등유 주유소 찾기'
                 : '주변 최저가 등유 주유소 찾기'}
             </h3>
           </div>
-          <span className="text-[11px] font-bold bg-aid-red/10 text-aid-red px-2.5 py-1 rounded-full">
+          <span className="text-[11px] font-bold bg-aid-red/10 text-aid-red px-2.5 py-1 rounded-full whitespace-nowrap shrink-0">
             실시간 가격
           </span>
         </div>
