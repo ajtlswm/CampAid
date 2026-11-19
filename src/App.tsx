@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import AppHeader from './components/layout/AppHeader';
 import BottomNav from './components/layout/BottomNav';
 import Toast from './components/ui/Toast';
@@ -53,6 +53,14 @@ export default function App() {
   });
 
   const [userGear, setUserGear] = useLocalStorage<UserGear[]>('campaid_user_gear', mockGear);
+
+  // 이전 버전의 기본 8종 샘플 장비(g001~g008)만 그대로 남아있을 경우 3종 샘플(텐트·침낭·랜턴)로 자동 업그레이드
+  useEffect(() => {
+    const legacyIds = new Set(['g001', 'g002', 'g003', 'g004', 'g005', 'g006', 'g007', 'g008']);
+    if (userGear.length > 0 && userGear.every((g) => legacyIds.has(g.gear_id))) {
+      setUserGear(mockGear);
+    }
+  }, [userGear, setUserGear]);
 
   const handleAddGear = (newGear: Omit<UserGear, 'gear_id' | 'user_id' | 'created_at'>) => {
     const item: UserGear = {

@@ -58,7 +58,6 @@ export default function ChecklistPage({
   const [showGearImportModal, setShowGearImportModal] = useState(false);
   const [newItemName, setNewItemName] = useState('');
   const [newItemCategory, setNewItemCategory] = useState<GearCategory>('WINTER_AID');
-  const [copiedInvite, setCopiedInvite] = useState(false);
 
   const climate = useCampingWeather(
     hasSchedule ? checklist.target_date : undefined,
@@ -77,13 +76,6 @@ export default function ChecklistPage({
     setOpenCategories((prev) => ({ ...prev, [cat]: !prev[cat] }));
   };
 
-  const handleCopyInvite = () => {
-    const shareUrl = `${window.location.origin}/?invite=${checklist.invite_code}`;
-    navigator.clipboard?.writeText(shareUrl).catch(() => {});
-    setCopiedInvite(true);
-    setTimeout(() => setCopiedInvite(false), 2500);
-  };
-
   const handleCreateItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (!newItemName.trim()) return;
@@ -98,27 +90,18 @@ export default function ChecklistPage({
       <section className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100">
         {hasSchedule ? (
           <div className="space-y-1.5">
-            {/* 1줄: 캠핑장/기온 배지 & 우측 친구 초대 버튼 */}
-            <div className="flex items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <button
-                  onClick={onOpenTripSetup}
-                  className="text-[11px] font-bold text-forest bg-forest/10 hover:bg-forest hover:text-white px-2.5 py-0.5 rounded-full transition-colors flex items-center gap-1 truncate"
-                >
-                  <span className="truncate">📍 {checklist.destination_name}</span>
-                  <span className="shrink-0">✏️</span>
-                </button>
-                <span className="text-[11px] font-bold text-aid-red bg-aid-red/10 px-2 py-0.5 rounded-full whitespace-nowrap shrink-0">
-                  {climate.minTemp}℃ {climate.weatherIcon}
-                </span>
-              </div>
-
+            {/* 1줄: 캠핑장/기온 배지 */}
+            <div className="flex items-center gap-1.5 min-w-0">
               <button
-                onClick={handleCopyInvite}
-                className="shrink-0 bg-forest hover:bg-forest-600 text-white text-xs font-bold px-3 py-1.5 rounded-xl shadow-sm transition-colors flex items-center gap-1 whitespace-nowrap"
+                onClick={onOpenTripSetup}
+                className="text-[11px] font-bold text-forest bg-forest/10 hover:bg-forest hover:text-white px-2.5 py-0.5 rounded-full transition-colors flex items-center gap-1 truncate"
               >
-                🔗 {copiedInvite ? '복사됨!' : '친구 초대'}
+                <span className="truncate">📍 {checklist.destination_name}</span>
+                <span className="shrink-0">✏️</span>
               </button>
+              <span className="text-[11px] font-bold text-aid-red bg-aid-red/10 px-2 py-0.5 rounded-full whitespace-nowrap shrink-0">
+                {climate.minTemp}℃ {climate.weatherIcon}
+              </span>
             </div>
 
             {/* 2줄: 캠핑 제목 (가로 전체폭 100% 사용 · 줄바꿈 방지) */}
@@ -164,30 +147,6 @@ export default function ChecklistPage({
             </button>
           </div>
         )}
-
-        {/* 참여 멤버 프로필 & 초대 코드 */}
-        <div className="mt-3 pt-3 border-t border-gray-100 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <div className="flex -space-x-2">
-              <span className="w-7 h-7 rounded-full bg-forest text-white text-xs font-bold flex items-center justify-center ring-2 ring-white">
-                나
-              </span>
-              <span className="w-7 h-7 rounded-full bg-amber-500 text-white text-xs font-bold flex items-center justify-center ring-2 ring-white">
-                김
-              </span>
-              <span className="w-7 h-7 rounded-full bg-sky-500 text-white text-xs font-bold flex items-center justify-center ring-2 ring-white">
-                박
-              </span>
-            </div>
-            <span className="text-xs text-gray-500">캠핑 멤버 3명 공동 작업 중</span>
-          </div>
-          <button
-            onClick={handleCopyInvite}
-            className="text-[11px] font-mono text-forest hover:underline font-bold"
-          >
-            {copiedInvite ? '✓ 링크 복사됨' : `🔗 #${checklist.invite_code}`}
-          </button>
-        </div>
       </section>
 
       {/* 2.2 진척도 게이지 & 계절 연동 AI 추천 칩 */}

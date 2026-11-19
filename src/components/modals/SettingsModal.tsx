@@ -523,7 +523,7 @@ export default function SettingsModal({
                 type="button"
                 onClick={() => {
                   onResetGear();
-                  showNotice('장비고가 초기 샘플 장비(8점)로 초기화되었습니다.');
+                  showNotice('장비고가 초기 샘플 장비(3점)로 초기화되었습니다.');
                 }}
                 className="py-2 px-3 rounded-xl text-[11px] font-bold border border-gray-200 text-gray-600 hover:bg-gray-100 transition-colors"
               >

@@ -164,14 +164,24 @@ export default function GearPage({
       <div className="space-y-3">
         {filteredGear.map((gear) => {
           const isWinter = gear.season_tags.includes('WINTER');
+          const isSample = gear.gear_id.startsWith('g_sample_');
           return (
             <div
               key={gear.gear_id}
-              className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-2"
+              className={`rounded-2xl p-4 shadow-sm space-y-2 ${
+                isSample
+                  ? 'bg-amber-50/40 border border-dashed border-amber-300'
+                  : 'bg-white border border-gray-100'
+              }`}
             >
               <div className="flex items-start justify-between">
                 <div>
-                  <div className="flex items-center gap-1.5">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    {isSample && (
+                      <span className="text-[10px] font-extrabold bg-amber-100 text-amber-800 px-2 py-0.5 rounded">
+                        📌 샘플 예시
+                      </span>
+                    )}
                     <span className="text-[10px] font-bold bg-surface text-gray-700 px-2 py-0.5 rounded">
                       {CATEGORY_LABELS[gear.category]}
                     </span>
