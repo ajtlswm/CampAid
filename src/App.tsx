@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import AppHeader from './components/layout/AppHeader';
 import BottomNav from './components/layout/BottomNav';
 import Toast from './components/ui/Toast';
@@ -207,6 +208,7 @@ export default function App() {
       />
 
       <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+      <Analytics />
     </div>
   );
 }
