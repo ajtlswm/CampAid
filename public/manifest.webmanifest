@@ -1,0 +1,16 @@
+{
+  "name": "캠프에이드 - CampAid",
+  "short_name": "캠프에이드",
+  "description": "캠핑 준비물 체크리스트 및 주변 등유 주유소 실시간 조회 웹앱",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#1E3F20",
+  "icons": [
+    {
+      "src": "/tent.svg",
+      "sizes": "any",
+      "type": "image/svg+xml"
+    }
+  ]
+}
